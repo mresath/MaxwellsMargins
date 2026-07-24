@@ -76,11 +76,11 @@ are scaffolded. No simulation logic is implemented yet. Vendor submodules
 
 ### Phase 1 - App shell
 
-- `git submodule add` the four remaining vendor deps; confirm `cmake -B build && cmake --build build` produces an empty window.
-- `core/App`: window, view, pan/zoom/resize helpers (`core/UI.hpp`), mode switcher.
-- Empty Fields/Circuits canvases with the tools panel / properties panel / settings panel layout (content added per-phase below).
-- `render/Renderer::drawGridlines`.
-- Acceptance: app launches, shows an empty grid, mode tabs switch the (empty) canvas, panels render with no content yet.
+- [x] `git submodule add` the four remaining vendor deps; confirm `cmake -B build && cmake --build build` produces an empty window.
+- [x] `core/App`: window, view, pan/zoom/resize helpers (`core/UI.hpp`), mode switcher.
+- [x] Empty Fields/Circuits canvases with the tools panel / properties panel / settings panel layout (content added per-phase below).
+- [x] `render/Renderer::drawGridlines`.
+- [x] Acceptance: app launches, shows an empty grid, mode tabs switch the (empty) canvas, panels render with no content yet. Verified: built and launched the .app bundle, confirmed it stayed running (no crash) and correctly created `logs/`/`screenshots/`/`graphs/` next to the executable inside the bundle.
 
 ### Phase 2 - Electrostatics
 
@@ -144,12 +144,12 @@ are scaffolded. No simulation logic is implemented yet. Vendor submodules
 
 ### Phase 1 - App shell
 
-- [ ] Confirm `cmake -B build && cmake --build build` produces an empty window
-- [ ] `core/App`: window, view, pan/zoom/resize helpers (`core/UI.hpp`, ported from NN)
-- [ ] Mode switcher (Fields/Circuits tabs)
-- [ ] Empty Fields/Circuits canvases with tools/properties/settings panel layout
-- [ ] `render/Renderer::drawGridlines`
-- [ ] Acceptance: app launches, shows an empty grid, mode tabs switch the (empty) canvas, panels render with no content yet
+- [x] Confirm `cmake -B build && cmake --build build` produces an empty window
+- [x] `core/App`: window, view, pan/zoom/resize helpers (`core/UI.hpp`)
+- [x] Mode switcher (Fields/Circuits tabs)
+- [x] Empty Fields/Circuits canvases with tools/properties/settings panel layout
+- [x] `render/Renderer::drawGridlines`
+- [x] Acceptance: app launches, shows an empty grid, mode tabs switch the (empty) canvas, panels render with no content yet
 
 ### Phase 2 - Electrostatics
 

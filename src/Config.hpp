@@ -18,6 +18,11 @@
 #define ZOOM_STEP 0.025f
 #define PAN_SPEED 15.f
 
+// TOOLS CONFIGURATION
+#define TOOLS_ICON_SIZE 32
+#define TOOL_BG_COLOR sf::Color(41, 74, 122, 102)
+#define TOOL_SELECT_COLOR sf::Color(66, 150, 250, 200)
+
 // ENGINE CONFIGURATION (single shared DOPRI5-style solver, see engine/Solver.hpp)
 #define CALC_FREQ 240.f // Hz
 #define MAX_DT 0.05f    // seconds
@@ -75,4 +80,5 @@
 
 // LOGGING & GRAPHING CONFIGURATION
 #define LOG_DIRECTORY "logs"
+#define SCREENSHOT_DIRECTORY "screenshots"
 #define GRAPH_EXPORT_DIRECTORY "graphs"

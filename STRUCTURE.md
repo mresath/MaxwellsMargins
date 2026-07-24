@@ -6,7 +6,7 @@ You can use AI for such updates, but all text should be human-reviewed.
 
 # Codebase Structure
 
-> **Scaffold status**: most classes below are stub interfaces (header class shells, `TODO(Phase N)` method bodies) - see [PLAN.md](PLAN.md) for the phased build order. This document describes the intended architecture as scaffolded, not yet-implemented behavior.
+> **Scaffold status**: Phase 1 (the app shell - window, main loop, pan/zoom/resize, mode switching, gridlines, log/screenshot/graph folder setup) is implemented and verified (builds and launches). Everything domain-specific (electrostatics/magnetism/induction/circuits, and the shared solver) is still a stub interface (header class shells, `TODO(Phase N)` method bodies) - see [PLAN.md](PLAN.md) for the phased build order.
 
 ## Core Directories and Files
 
@@ -35,9 +35,10 @@ You can use AI for such updates, but all text should be human-reviewed.
   - Window/view creation, ImGui-SFML init, window icon (from `src/assets/logo/logo.png`)
   - Main loop: process events -> fixed-step update -> render
   - Owns one `World` (Fields mode), one `CircuitGraph` (Circuits mode), one `Tools`, one `Renderer`, one `Logger`, one `Grapher` - only one scene is active/visible at a time, gated by `m_mode`
-- **Key methods** (stub, `TODO(Phase 1)`):
-  - `run()`, `processEvents()`, `update(frameTime)`, `draw()`
-  - `drawToolsPanel()`, `drawPropertiesPanel()`, `drawSettingsPanel()`: the three ImGui panels (tools, properties, settings)
+- **Key methods** (implemented):
+  - `run()`: fixed-timestep accumulator loop (`CALC_FREQ`, capped at `MAX_UPDATES_PER_FRAME`) around `processEvents()`/`update()`/`draw()`
+  - `processEvents()`: window close/resize, pan (`RMB` drag)/zoom (wheel)/reset view (`MMB`), `P` to pause, left-click routed to `Tools::onClick` against whichever of `m_world`/`m_circuit` is active
+  - `drawToolsPanel()`, `drawPropertiesPanel()`, `drawSettingsPanel()`: the three ImGui panels - settings has the working Fields/Circuits mode switch and pause button; tools/properties are placeholder shells until their respective phases land
 
 #### `Mode.hpp`
 - **What it does**: `enum class Mode { Fields, Circuits }` - the top-level mode switch. See "Architecture" in [PLAN.md](PLAN.md) for why Fields and Circuits are split rather than one unified scene.
@@ -53,7 +54,7 @@ You can use AI for such updates, but all text should be human-reviewed.
 - **Key methods**: `onClick(worldPos, World&)` and an overload for `CircuitGraph&`, routed by the active mode - both currently `TODO`
 
 #### `UI.hpp`
-- **What it does**: View/window helper declarations (pan, zoom, resize, letterboxing) - signatures only, bodies are `TODO(Phase 1)`
+- **What it does**: View/window helpers (pan, zoom, resize, letterboxing) - `handleResize`/`handleZoom`/`handlePanMouse`/`calculateLetterboxViewport`/`clampViewToWorld`, all implemented. Pan/zoom is clamped to the `DEF_WIDTH`/`DEF_HEIGHT` canvas (a Phase 1 default, easy to widen later if Fields mode needs a larger pannable area)
 
 ---
 
@@ -131,7 +132,7 @@ You can use AI for such updates, but all text should be human-reviewed.
 - 2D vector math: arithmetic operators, `length()`/`normalized()`/`rotate()`/`perpendicular()`, `dot()`/`cross()` free functions
 
 #### `Util.hpp`
-- `pixelsToMeters()`/`metersToPixels()` conversions and position standardization helpers
+- `pixelsToMeters()`/`metersToPixels()` conversions (scalar and `Vec2` overloads). No position-standardization step here, unlike Newton's Notepad - Fields mode has no ground/wall reference, so world positions are just meters relative to the view origin
 
 ---
 
@@ -140,7 +141,7 @@ You can use AI for such updates, but all text should be human-reviewed.
 #### `Renderer.hpp / Renderer.cpp`
 - **What it does**: Draws the grid, then mode-dependent content
 - **Toggle flags**: `showFieldVectors`, `showFieldLines`, `showEquipotentials`, `showCurrentFlowAnimation`
-- **Key methods**: `drawGridlines()`, `drawWorld()` (charges/fields/particles/loops), `drawCircuit()` (schematic + live V/I/R/Q labels + current-flow animation) - all bodies `TODO`
+- **Key methods**: `drawGridlines()` (implemented - minor/major spacing, axis highlight, view-relative); `drawWorld()` (charges/fields/particles/loops) and `drawCircuit()` (schematic + live V/I/R/Q labels + current-flow animation) are still `TODO`, pending Phase 2+ entity data to draw
 
 ---
 
@@ -148,6 +149,7 @@ You can use AI for such updates, but all text should be human-reviewed.
 
 #### `Logger.hpp / Logger.cpp`
 - **What it does**: Will record simulation state (field strength, potential, current, voltage, charge, ...) at each update for graphing
+- **Implemented now**: the constructor creates `logs/`, `screenshots/`, `graphs/` (relative paths, per `Config.hpp`'s `LOG_DIRECTORY`/`SCREENSHOT_DIRECTORY`/`GRAPH_EXPORT_DIRECTORY`) - this only lands next to the executable correctly because `main()` already ran `chdirToExecutableDirectory()` first
 - **Key methods**: `record(simTime, namedValues)`, `reset()`, `save(path)` - all `TODO(Phase 6)`
 
 ---
