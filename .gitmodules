@@ -1,0 +1,15 @@
+[submodule "vendor/imgui"]
+	path = vendor/imgui
+	url = https://github.com/ocornut/imgui
+[submodule "vendor/fmt"]
+	path = vendor/fmt
+	url = https://github.com/fmtlib/fmt
+[submodule "vendor/imgui-sfml"]
+	path = vendor/imgui-sfml
+	url = https://github.com/SFML/imgui-sfml
+[submodule "vendor/json"]
+	path = vendor/json
+	url = https://github.com/nlohmann/json
+[submodule "vendor/matplotplusplus"]
+	path = vendor/matplotplusplus
+	url = https://github.com/alandefreitas/matplotplusplus

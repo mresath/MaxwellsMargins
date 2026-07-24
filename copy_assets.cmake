@@ -1,0 +1,1 @@
+file(COPY ${SRC_DIR}/src/assets DESTINATION ${TARGET_DIR})
