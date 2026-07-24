@@ -131,3 +131,75 @@ are scaffolded. No simulation logic is implemented yet. Vendor submodules
 - **Solver**: fixed-step DOPRI5-style (not adaptive) per the "single robust solver" requirement, mirroring Newton's Notepad's DOPRI5 option. Revisit if RC time constants and particle-in-B timescales turn out to need very different step sizes simultaneously.
 - **Circuits solve method**: modified nodal analysis (MNA) rather than mesh/loop analysis, since it generalizes better to arbitrary topologies added incrementally by a user (no need to detect independent loops).
 - **Inductors**: modeled as a `Component` in `circuits/` (RL behavior is circuit-local), separate from `induction/`'s spatial moving-loop EMF generation - these are physically distinct even though both are "induction."
+
+## Checklist
+
+### Phase 0 - Repo scaffolding
+
+- [x] Folder structure
+- [x] Stub headers (module class shells)
+- [x] `CMakeLists.txt`
+- [x] README/PLAN/SCIENCE/STRUCTURE docs
+- [x] Vendored SFML + logo asset
+- [x] Git repo initialized, vendor submodules added (imgui pinned to v1.91.9b, fmt, imgui-sfml, json, matplotplusplus)
+
+### Phase 1 - App shell
+
+- [ ] Confirm `cmake -B build && cmake --build build` produces an empty window
+- [ ] `core/App`: window, view, pan/zoom/resize helpers (`core/UI.hpp`, ported from NN)
+- [ ] Mode switcher (Fields/Circuits tabs)
+- [ ] Empty Fields/Circuits canvases with tools/properties/settings panel layout
+- [ ] `render/Renderer::drawGridlines` (ported from NN's `main.cpp`)
+- [ ] Acceptance: app launches, shows an empty grid, mode tabs switch the (empty) canvas, panels render with no content yet
+
+### Phase 2 - Electrostatics
+
+- [ ] `PointCharge` placement tool
+- [ ] `engine/FieldMath::coulombField`/`coulombPotential` (superposition)
+- [ ] Field vectors (arrows scaled to magnitude)
+- [ ] Continuous field lines (seeded traces from `FieldSampler`)
+- [ ] Potential readout at cursor
+- [ ] `EquipotentialTracer` + equipotential line rendering
+- [ ] `GaussianSurface` draw tool + enclosed-charge/flux readout
+- [ ] Preset: `scenes::loadDipoleField`
+- [ ] Acceptance: superposed field vectors/lines and equipotentials match Coulomb's law; Gauss tool reports correct enclosed charge
+
+### Phase 3 - Magnetism
+
+- [ ] `UniformBField` toggle + strength control
+- [ ] `ChargedParticle` placement tool
+- [ ] `engine/FieldMath::lorentzForce`
+- [ ] Particle motion integrated via `engine/Solver` (circular/helical trajectories + path traces)
+- [ ] `CurrentWire` placement; field via `biotSavartField` (right-hand rule visualization)
+- [ ] `forceBetweenWires` + on-canvas force readout for two parallel wires
+- [ ] Preset: `scenes::loadParticleInUniformB`
+- [ ] Acceptance: particle radius matches `r = mv/qB`; wire force direction/magnitude correct
+
+### Phase 4 - Induction
+
+- [ ] `MovingLoop` flux computation (`B x A x cos(theta)`)
+- [ ] `inducedEMF = -dPhi/dt` (Faraday's law)
+- [ ] Lenz's-law direction indicator
+- [ ] `Generator`: rotating loop at fixed angular velocity, EMF plotted live
+- [ ] Stretch goal: motor mode (loop driven by circuit current)
+- [ ] Acceptance: EMF sign matches motion direction; generator EMF matches `EMF = NBA*omega*sin(omega*t)`
+
+### Phase 5 - Circuits
+
+- [ ] `Component` hierarchy placement/wiring tools on the schematic canvas
+- [ ] `CircuitGraph::solve()` (modified nodal analysis)
+- [ ] `Switch` open/closed handling in the solve
+- [ ] RC/RL transient integration via `engine/Solver`
+- [ ] Ammeter/voltmeter `Probe`s (click-to-measure)
+- [ ] Live V/I/R/Q labels per component
+- [ ] Current-flow animation along wires
+- [ ] Presets: `scenes::loadParallelPlateCapacitor`, `scenes::loadSimpleRCCircuit`
+- [ ] Acceptance: RC charge/voltage curves match `V(t) = V0(1 - e^{-t/RC})`; switches and probes behave correctly
+
+### Phase 6 - Cross-cutting polish
+
+- [ ] `logging/Logger`: JSON state logging, selectable per-quantity
+- [ ] `graphing/Grapher`: matplot++-based plotting, save-as-image
+- [ ] Unit display pass (SI units shown consistently: C, N/C, V, Ohm, F, T, H)
+- [ ] Toggle-able overlay consistency/QA pass (field vectors, field lines, equipotentials, current-flow animation)
+- [ ] App icon: generate `.icns`/`.ico` from `src/assets/logo/logo.png`, wire into `resources/mac`/`resources/windows`
