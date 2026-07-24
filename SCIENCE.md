@@ -139,5 +139,5 @@ networks) work without special-casing.
 A single fixed-step Dormand-Prince-style (DOPRI5) integrator (`engine/Solver`) advances
 state vectors for: charged-particle motion (position/velocity), RC/RL transient state
 (capacitor charge / inductor current), and the rotating-loop generator (angle/angular
-velocity). Using one solver everywhere (vs. Newton's Notepad's 8-solver comparison shelf)
-keeps behavior consistent across domains, per the "single robust solver" requirement.
+velocity). Using one solver everywhere keeps behavior consistent across domains, per the
+"single robust solver" requirement.

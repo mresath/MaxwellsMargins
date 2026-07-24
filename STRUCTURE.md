@@ -16,7 +16,7 @@ You can use AI for such updates, but all text should be human-reviewed.
 - **What it does**: Entry point of the application
 - **Key functions**:
   - `main()`: Resolves the executable's directory (so assets load correctly regardless of launch working directory) and hands off to `App`
-  - `chdirToExecutableDirectory()`: Platform-specific (Windows/macOS/Linux) executable path resolution and `chdir` (ported from Schrodinger's Sketchbook)
+  - `chdirToExecutableDirectory()`: Platform-specific (Windows/macOS/Linux) executable path resolution and `chdir`
 
 #### `Config.hpp`
 - **What it does**: Central configuration file with all constants
@@ -37,30 +37,30 @@ You can use AI for such updates, but all text should be human-reviewed.
   - Owns one `World` (Fields mode), one `CircuitGraph` (Circuits mode), one `Tools`, one `Renderer`, one `Logger`, one `Grapher` - only one scene is active/visible at a time, gated by `m_mode`
 - **Key methods** (stub, `TODO(Phase 1)`):
   - `run()`, `processEvents()`, `update(frameTime)`, `draw()`
-  - `drawToolsPanel()`, `drawPropertiesPanel()`, `drawSettingsPanel()`: the three ImGui panels, mirroring Newton's Notepad's UI layout
+  - `drawToolsPanel()`, `drawPropertiesPanel()`, `drawSettingsPanel()`: the three ImGui panels (tools, properties, settings)
 
 #### `Mode.hpp`
 - **What it does**: `enum class Mode { Fields, Circuits }` - the top-level mode switch. See "Architecture" in [PLAN.md](PLAN.md) for why Fields and Circuits are split rather than one unified scene.
 
 #### `World.hpp / World.cpp`
-- **What it does**: Container for the Fields-mode scene (mirrors Newton's Notepad's `World`)
+- **What it does**: Container for the Fields-mode scene
 - **Holds**: `PointCharge`s, `CurrentWire`s, `ChargedParticle`s, `MovingLoop`s, `GaussianSurface`s, one `UniformBField` - all on one spatial canvas so electrostatics/magnetism/induction entities can interact (e.g. a charged particle feels both `E` from charges and `v x B` from the field)
 - **Key methods**: `reset()`, `update(dt)` (currently only advances sim time; force/motion integration is `TODO(Phase 2/3/4)`)
 
 #### `Tools.hpp / Tools.cpp`
-- **What it does**: User interaction tools (mirrors Newton's Notepad's `Tools`)
+- **What it does**: User interaction tools
 - **`ToolType` enum**: Fields-mode tools (place charge/wire/particle/loop, draw Gaussian surface, field probe) and Circuits-mode tools (place resistor/capacitor/battery/switch/wire, ammeter/voltmeter), plus shared `Select`/`Pan`
 - **Key methods**: `onClick(worldPos, World&)` and an overload for `CircuitGraph&`, routed by the active mode - both currently `TODO`
 
 #### `UI.hpp`
-- **What it does**: View/window helper declarations (pan, zoom, resize, letterboxing) - signatures only, `TODO(Phase 1)` to port bodies from Newton's Notepad's `UI.hpp` / Schrodinger's Sketchbook's `App.cpp`
+- **What it does**: View/window helper declarations (pan, zoom, resize, letterboxing) - signatures only, bodies are `TODO(Phase 1)`
 
 ---
 
 ### `src/engine/` - Shared Physics Math
 
 #### `Solver.hpp / Solver.cpp`
-- **What it does**: The project's single shared ODE solver (DOPRI5-style, fixed-step), replacing Newton's Notepad's 8-solver comparison shelf with one solver reused everywhere
+- **What it does**: The project's single shared ODE solver (DOPRI5-style, fixed-step), reused across every domain instead of offering multiple interchangeable integrators
 - **Used by** (once implemented): charged-particle motion, RC/RL circuit transients, the rotating-loop generator
 - **Status**: `step()` currently returns the input state unchanged - `TODO(Phase 1)`
 
@@ -125,7 +125,7 @@ You can use AI for such updates, but all text should be human-reviewed.
 
 ---
 
-### `src/math/` - Mathematical Utilities (reused from Newton's Notepad, unchanged)
+### `src/math/` - Mathematical Utilities
 
 #### `Vec2.hpp`
 - 2D vector math: arithmetic operators, `length()`/`normalized()`/`rotate()`/`perpendicular()`, `dot()`/`cross()` free functions
@@ -140,14 +140,14 @@ You can use AI for such updates, but all text should be human-reviewed.
 #### `Renderer.hpp / Renderer.cpp`
 - **What it does**: Draws the grid, then mode-dependent content
 - **Toggle flags**: `showFieldVectors`, `showFieldLines`, `showEquipotentials`, `showCurrentFlowAnimation`
-- **Key methods**: `drawGridlines()`, `drawWorld()` (charges/fields/particles/loops), `drawCircuit()` (schematic + live V/I/R/Q labels + current-flow animation) - all bodies `TODO`, referencing Newton's Notepad's `main.cpp` gridline code as a starting point
+- **Key methods**: `drawGridlines()`, `drawWorld()` (charges/fields/particles/loops), `drawCircuit()` (schematic + live V/I/R/Q labels + current-flow animation) - all bodies `TODO`
 
 ---
 
 ### `src/logging/` - Data Recording
 
 #### `Logger.hpp / Logger.cpp`
-- **What it does**: Will record simulation state (field strength, potential, current, voltage, charge, ...) at each update for graphing, mirroring Newton's Notepad's JSON logger
+- **What it does**: Will record simulation state (field strength, potential, current, voltage, charge, ...) at each update for graphing
 - **Key methods**: `record(simTime, namedValues)`, `reset()`, `save(path)` - all `TODO(Phase 6)`
 
 ---
@@ -155,7 +155,7 @@ You can use AI for such updates, but all text should be human-reviewed.
 ### `src/graphing/` - Visualization of Logged Data
 
 #### `Grapher.hpp / Grapher.cpp`
-- **What it does**: Will plot logged quantities via matplot++/gnuplot and export as images, mirroring Newton's Notepad's `Grapher`
+- **What it does**: Will plot logged quantities via matplot++/gnuplot and export as images
 - **Key methods**: `plot(logger, quantityNames)`, `saveAsImage(path)` - both `TODO(Phase 6)`
 
 ---
@@ -163,7 +163,7 @@ You can use AI for such updates, but all text should be human-reviewed.
 ### `src/scenes/` - Preloaded Test Scenes
 
 #### `Presets.hpp / Presets.cpp`
-- One function per preset, mirroring Newton's Notepad's `World::loadTestScene()`: `loadDipoleField`, `loadParallelPlateCapacitor`, `loadSimpleRCCircuit`, `loadParticleInUniformB` - all `TODO`, implemented alongside the phase that needs them (see PLAN.md)
+- One function per preset: `loadDipoleField`, `loadParallelPlateCapacitor`, `loadSimpleRCCircuit`, `loadParticleInUniformB` - all `TODO`, implemented alongside the phase that needs them (see PLAN.md)
 
 ---
 
@@ -198,7 +198,7 @@ Circuits mode (CircuitGraph::update):
 See [SCIENCE.md](SCIENCE.md) for the full physics/math this will implement.
 
 ### Coordinate System
-- Follows Newton's Notepad's convention: `PIXELS_PER_METER` conversion, grid lines at `GRID_MINOR_SPACING`/`GRID_MAJOR_SPACING` meters
+- `PIXELS_PER_METER` conversion, grid lines at `GRID_MINOR_SPACING`/`GRID_MAJOR_SPACING` meters
 
 ---
 
@@ -250,8 +250,8 @@ User sees updated simulation
 
 - **Build tool**: CMake (version 3.14+)
 - **Language**: C++17
-- **Main dependencies** (same as Newton's Notepad):
-  - SFML 3.0.2 (graphics and windowing) - vendored prebuilt binaries in `vendor/SFML` (copied from Schrodinger's Sketchbook, not a submodule)
+- **Main dependencies**:
+  - SFML 3.0.2 (graphics and windowing) - vendored prebuilt binaries in `vendor/SFML` (not a submodule)
   - ImGui + ImGui-SFML (user interface) - git submodules, imgui pinned to `v1.91.9b`
   - nlohmann/json (logging) - git submodule
   - fmt (formatted output) - git submodule
@@ -276,12 +276,12 @@ User sees updated simulation
 | `src/render/Renderer.hpp` | Grid + mode-dependent drawing |
 | `src/logging/Logger.hpp` | Data recording system |
 | `src/graphing/Grapher.hpp` | Quantity graphing/export |
-| `src/math/Vec2.hpp` | 2D vector math (from Newton's Notepad) |
+| `src/math/Vec2.hpp` | 2D vector math |
 
 ---
 
 ## Notes
 
-- This document reflects the **scaffold** committed in "Initial scaffold: folder structure, module stubs, build files, docs" - update it as each phase in [PLAN.md](PLAN.md) lands.
+- This document reflects the initial **scaffold** commit - update it as each phase in [PLAN.md](PLAN.md) lands.
 - Fields mode and Circuits mode intentionally do not share a scene container: Fields entities live in continuous 2D space and superpose physically, while Circuits entities are graph/topology-based (node indices, not positions) and are solved algebraically (MNA) rather than by force integration alone.
 - Trivial value-holder classes (charges, wires, particles, loops, circuit components) got real constructors immediately since they involve no design decisions; anything requiring an actual physics/numerics decision was left as a `TODO(Phase N)` stub instead of guessed at.

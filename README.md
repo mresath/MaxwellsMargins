@@ -52,7 +52,7 @@ A physics simulator/playground with the following features:
 
 See [PLAN.md](PLAN.md) for the phased implementation plan and [SCIENCE.md](SCIENCE.md) for the underlying math/physics.
 
-The UI follows [Newton's Notepad](../NewtonsNotepad)'s layout (tools panel, properties panel, graphing window), and the code style/folder structure follows [Schrodinger's Sketchbook](../SchrodingersSketchbook).
+The UI is laid out as a tools panel, a properties panel, and a graphing window, with a per-domain module structure (`src/<domain>/`) for the code itself.
 
 ## Status
 
@@ -79,7 +79,7 @@ Not yet released. To build from source, see [Building](#building) below.
 
 ## Notes
 
-- The latest version of imgui-sfml requires imgui 1.91.x, so to compile the project you need to checkout v1.91.9b for that submodule (see Newton's Notepad / Schrodinger's Sketchbook for the same note).
+- The latest version of imgui-sfml requires imgui 1.91.x, so to compile the project you need to checkout v1.91.9b for that submodule.
 
 ## AI Usage Disclaimer
 

@@ -24,12 +24,12 @@ The feature list splits into two fundamentally different interaction models, so 
 
 A mode selector (tabs in the settings panel) switches between them. Each mode gets its own
 Tools/Properties panel content, but the overall panel layout (tools panel, properties
-panel, graphing window) follows Newton's Notepad.
+panel, graphing window) stays consistent across modes.
 
 One shared solver module (`engine/Solver`, DOPRI5-style, fixed-step) is reused for:
 charged-particle motion, RC/RL transients, and the rotating-loop generator - this is the
-"single robust solver" requirement, replacing Newton's Notepad's 8-solver comparison shelf
-with one solver used everywhere.
+"single robust solver" requirement: one solver used everywhere instead of multiple
+interchangeable integrators.
 
 `engine/FieldMath` holds the shared force/field math (Coulomb, Biot-Savart, Lorentz) used
 by electrostatics/magnetism/induction alike, so those modules stay thin data+geometry
@@ -50,17 +50,16 @@ src/
 ├── magnetism/                  UniformBField, CurrentWire, ChargedParticle
 ├── induction/                  MovingLoop, Generator
 ├── circuits/                   Component (+Resistor/Capacitor/Battery/Switch/Probe), CircuitGraph
-├── math/                       Vec2.hpp, Util.hpp (reused from Newton's Notepad)
+├── math/                       Vec2.hpp, Util.hpp
 ├── render/                     Renderer (grid, vectors, field lines, equipotentials, schematic drawing)
-├── logging/                    Logger (JSON state logging, mirrors NN's Logger)
-├── graphing/                   Grapher (matplot++/gnuplot, mirrors NN's Grapher)
+├── logging/                    Logger (JSON state logging)
+├── graphing/                   Grapher (matplot++/gnuplot)
 └── scenes/                     Presets (dipole field, parallel plate capacitor, simple RC, particle in B)
 ```
 
-Dependencies match Newton's Notepad exactly: SFML 3.0.2, ImGui + imgui-sfml, fmt,
-nlohmann/json, matplot++ (all as git submodules under `vendor/`, except SFML which is
-manually vendored prebuilt binaries copied from Schrodinger's Sketchbook - see its
-`vendor/SFML` directory).
+Dependencies: SFML 3.0.2, ImGui + imgui-sfml, fmt, nlohmann/json, matplot++ (all as git
+submodules under `vendor/`, except SFML which is manually vendored as prebuilt binaries
+under `vendor/SFML`).
 
 ## Current status
 
@@ -78,9 +77,9 @@ are scaffolded. No simulation logic is implemented yet. Vendor submodules
 ### Phase 1 - App shell
 
 - `git submodule add` the four remaining vendor deps; confirm `cmake -B build && cmake --build build` produces an empty window.
-- `core/App`: window, view, pan/zoom/resize helpers (`core/UI.hpp`, ported from NN), mode switcher.
+- `core/App`: window, view, pan/zoom/resize helpers (`core/UI.hpp`), mode switcher.
 - Empty Fields/Circuits canvases with the tools panel / properties panel / settings panel layout (content added per-phase below).
-- `render/Renderer::drawGridlines` (ported from NN's `main.cpp`).
+- `render/Renderer::drawGridlines`.
 - Acceptance: app launches, shows an empty grid, mode tabs switch the (empty) canvas, panels render with no content yet.
 
 ### Phase 2 - Electrostatics
@@ -120,7 +119,7 @@ are scaffolded. No simulation logic is implemented yet. Vendor submodules
 
 ### Phase 6 - Cross-cutting polish
 
-- `logging/Logger`: JSON state logging (mirrors NN), selectable per-quantity like NN's per-object graph buttons.
+- `logging/Logger`: JSON state logging, selectable per-quantity via graph buttons in the properties panel.
 - `graphing/Grapher`: matplot++-based plotting of logged quantities over time, save-as-image.
 - Unit display pass: confirm SI units (C, N/C, V, Ohm, F, T, H) are shown consistently everywhere adjustable magnitudes appear.
 - Toggle-able overlays: field vectors, field lines, equipotentials, current-flow animation (already wired incrementally per-phase; this is the consistency/QA pass).
@@ -128,7 +127,7 @@ are scaffolded. No simulation logic is implemented yet. Vendor submodules
 
 ## Open decisions log
 
-- **Solver**: fixed-step DOPRI5-style (not adaptive) per the "single robust solver" requirement, mirroring Newton's Notepad's DOPRI5 option. Revisit if RC time constants and particle-in-B timescales turn out to need very different step sizes simultaneously.
+- **Solver**: fixed-step DOPRI5-style (not adaptive) per the "single robust solver" requirement. Revisit if RC time constants and particle-in-B timescales turn out to need very different step sizes simultaneously.
 - **Circuits solve method**: modified nodal analysis (MNA) rather than mesh/loop analysis, since it generalizes better to arbitrary topologies added incrementally by a user (no need to detect independent loops).
 - **Inductors**: modeled as a `Component` in `circuits/` (RL behavior is circuit-local), separate from `induction/`'s spatial moving-loop EMF generation - these are physically distinct even though both are "induction."
 
@@ -149,7 +148,7 @@ are scaffolded. No simulation logic is implemented yet. Vendor submodules
 - [ ] `core/App`: window, view, pan/zoom/resize helpers (`core/UI.hpp`, ported from NN)
 - [ ] Mode switcher (Fields/Circuits tabs)
 - [ ] Empty Fields/Circuits canvases with tools/properties/settings panel layout
-- [ ] `render/Renderer::drawGridlines` (ported from NN's `main.cpp`)
+- [ ] `render/Renderer::drawGridlines`
 - [ ] Acceptance: app launches, shows an empty grid, mode tabs switch the (empty) canvas, panels render with no content yet
 
 ### Phase 2 - Electrostatics
