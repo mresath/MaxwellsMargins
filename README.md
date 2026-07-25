@@ -8,55 +8,23 @@ You can use AI for such updates, but all text should be human-reviewed.
 
 A physics simulator/playground with the following features:
 
-- Simple 2D graphics
-- Easy to use UI
-- Grid-based field visualization
+- Simple 2D Graphics
+- Easy to Use UI
 - Electrostatics
-  - Point charges (positive/negative, adjustable magnitude)
-  - Electric field vectors (arrows scaled to magnitude)
-  - Field lines (continuous, not just discrete arrows)
-  - Equipotential lines/surfaces
-  - Electric potential (V) at any point
-  - Superposition of multiple charges
-  - Coulomb's law force calculations between charges
-  - Gauss's law visualization (flux through user-drawn Gaussian surfaces)
-- Circuits
-  - Resistors (series & parallel)
-  - Capacitors (series & parallel, charge/discharge over time)
-  - Batteries/EMF sources (with internal resistance)
-  - Ammeter/voltmeter probes (click to measure current/voltage at a point)
-  - Kirchhoff's voltage & current law solving
-  - RC circuit transient behavior (charging/discharging curves)
-  - Switches (open/close circuit dynamically)
-- Magnetism
-  - Uniform magnetic fields (into/out of page, adjustable strength)
-  - Moving point charges in a field (Lorentz force, circular/helical motion)
-  - Current-carrying wires (field via right-hand rule)
-  - Force between parallel current-carrying wires
-  - Magnetic force on current-carrying segments (F = IL x B)
-- Induction
-  - Moving conductors/loops through magnetic fields
-  - Changing magnetic flux -> induced EMF (Faraday's law)
-  - Lenz's law direction indicators
-  - Simple generator/motor demo (rotating loop in field)
-  - Inductors (RL circuit behavior)
-- Real quantities & units (SI: C, N/C, V, Ohm, F, T, H throughout, adjustable magnitudes with real-world scaling)
-- Visualization
-  - Field line & vector overlays (toggle on/off)
-  - Real-time current flow animation in circuits
-  - Charge trajectory path traces
-  - Circuit values displayed live (V, I, R, Q per component)
-- A single robust ODE solver (DOPRI5-style), shared across all domains
-- Quantity logging and graphing for analysis (log/graph field strength, potential, current, voltage, charge over time; export graphs as images)
-- Preloaded test scenes: dipole field, parallel plate capacitor, simple RC circuit, charged particle in uniform B field
+  - Point Charges (Positive/Negative, Adjustable Magnitude)
+  - Coulomb's Law Superposition
+  - Field Vectors & Field Lines (Toggleable)
+  - Equipotential Lines
+  - Gaussian Surfaces (Enclosed Charge & Flux)
+- Circuits, Magnetism & Induction (In Development, see [PLAN.md](PLAN.md))
+- Real Quantities & Units
+  - SI throughout (Coulombs, N/C, Volts)
+  - The minor and major gridlines represent 1m and 5m respectively
+- Object Selection & Properties Panel
+- Dipole Field Preset
+- Quantity Logging and Graphing for Analysis (In Development)
 
-See [PLAN.md](PLAN.md) for the phased implementation plan and [SCIENCE.md](SCIENCE.md) for the underlying math/physics.
-
-The UI is laid out as a tools panel, a properties panel, and a graphing window, with a per-domain module structure (`src/<domain>/`) for the code itself.
-
-## Status
-
-This project is in the initial scaffolding stage: folder structure, module interfaces, and build files are in place, but simulation logic is not yet implemented. See [PLAN.md](PLAN.md) for the build order.
+See [PLAN.md](PLAN.md) for the phased implementation roadmap and [SCIENCE.md](SCIENCE.md) for the underlying math/physics.
 
 ## Installation
 
@@ -67,15 +35,25 @@ Not yet released. To build from source, see [Building](#building) below.
 1. Clone with submodules: `git clone --recurse-submodules <repo-url>` (or `git submodule update --init --recursive` if already cloned)
 2. `cmake -B build && cmake --build build`
 
-## Controls (planned)
+## Controls
 
-- `LMB`: use the active tool (place charge/component, drag, probe)
-- Hold `RMB` and move the mouse to pan
-- Scroll to zoom in/out
-- `Esc` to toggle settings
-- `P` to pause
-- `S` to capture a screenshot
-- `G` to toggle graphing
+- `LMB`: use the active tool (place a charge, drag with Move, select, erase, ...)
+- `RMB + drag`: pan view
+- `Mouse wheel`: zoom
+- `MMB`: reset view
+- `Esc`: toggle settings
+- `P`: pause/resume simulation
+
+UI panels: `Stats`, `Tools`, `Tool Settings`, `Properties` (appears once a charge or Gaussian surface is selected), `Settings` (`Esc`, holds the mode tabs, presets, and overlay toggles)
+
+## Electrostatics
+
+- Point charges are placed with an adjustable sign and magnitude, and can be repositioned with `Move` or edited afterward through the `Properties` panel
+- Field vectors and field lines are computed from Coulomb's law superposition over every charge in the scene; both are independently toggleable from Settings
+- Field lines are traced with midpoint (RK2) integration for smooth curves near strong field gradients
+- Equipotential lines are extracted via marching squares over a sampled potential grid
+- Gaussian surfaces report enclosed charge and flux (`Q_enc / epsilon_0`) live as charges move in or out of them
+- The Field Probe tool reads live position, potential, and field magnitude/direction at the cursor
 
 ## Notes
 
