@@ -16,12 +16,21 @@ A physics simulator/playground with the following features:
   - Field Vectors & Field Lines (Toggleable)
   - Equipotential Lines
   - Gaussian Surfaces (Enclosed Charge & Flux)
-- Circuits, Magnetism & Induction (In Development, see [PLAN.md](PLAN.md))
+- Magnetism (In Development)
+  - Uniform Magnetic Fields
+  - Charged Particles (Lorentz Force)
+  - Current-Carrying Wires
+- Circuits (In Development)
+  - Resistors, Capacitors, Batteries, Switches
+  - Ammeter/Voltmeter Probes
+- Induction (In Development)
+  - Moving Loops (Faraday's Law)
+  - Generator Demo
 - Real Quantities & Units
   - SI throughout (Coulombs, N/C, Volts)
   - The minor and major gridlines represent 1m and 5m respectively
 - Object Selection & Properties Panel
-- Dipole Field Preset
+- Presets
 - Quantity Logging and Graphing for Analysis (In Development)
 
 See [PLAN.md](PLAN.md) for the phased implementation roadmap and [SCIENCE.md](SCIENCE.md) for the underlying math/physics.
@@ -54,6 +63,13 @@ UI panels: `Stats`, `Tools`, `Tool Settings`, `Properties` (appears once a charg
 - Equipotential lines are extracted via marching squares over a sampled potential grid
 - Gaussian surfaces report enclosed charge and flux (`Q_enc / epsilon_0`) live as charges move in or out of them
 - The Field Probe tool reads live position, potential, and field magnitude/direction at the cursor
+
+## Presets
+
+- **Dipole Field**: two equal-and-opposite point charges, for exploring field vector/line and equipotential behavior around a classic charge configuration
+- **Parallel Plate Capacitor** (In Development): a battery-charged capacitor demo for circuits mode
+- **Simple RC Circuit** (In Development): a battery, resistor, and capacitor for exploring charge/discharge transients
+- **Particle in Uniform B Field** (In Development): a charged particle tracing a circular/helical path through a uniform magnetic field
 
 ## Notes
 
