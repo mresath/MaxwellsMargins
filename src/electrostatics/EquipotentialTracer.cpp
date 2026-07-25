@@ -59,7 +59,8 @@ void addCaseSegments(int caseIndex, const Vec2 &e0, const Vec2 &e1, const Vec2 &
 }
 } // namespace
 
-std::vector<std::vector<Vec2>> EquipotentialTracer::traceContours(const std::vector<PointCharge> &charges, const std::vector<float> &potentialValues) const
+std::vector<std::vector<Vec2>> EquipotentialTracer::traceContours(const std::vector<PointCharge> &charges, const std::vector<float> &potentialValues,
+                                                                    const Vec2 &viewMin, const Vec2 &viewMax) const
 {
     if (charges.empty() || potentialValues.empty())
         return {};
@@ -75,10 +76,12 @@ std::vector<std::vector<Vec2>> EquipotentialTracer::traceContours(const std::vec
     }
 
     constexpr float kPadding = 4.0f; // meters
-    minX -= kPadding;
-    maxX += kPadding;
-    minY -= kPadding;
-    maxY += kPadding;
+    minX = std::max(minX - kPadding, viewMin.x);
+    maxX = std::min(maxX + kPadding, viewMax.x);
+    minY = std::max(minY - kPadding, viewMin.y);
+    maxY = std::min(maxY + kPadding, viewMax.y);
+    if (minX >= maxX || minY >= maxY)
+        return {};
 
     const float step = EQUIPOTENTIAL_GRID_STEP;
     const int cols = static_cast<int>(std::ceil((maxX - minX) / step));

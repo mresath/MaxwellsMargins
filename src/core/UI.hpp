@@ -5,6 +5,7 @@
 #include <SFML/Graphics.hpp>
 
 #include <algorithm>
+#include <cmath>
 
 // View/window helpers (pan, zoom, resize, letterboxing) shared by App.
 
@@ -35,30 +36,30 @@ inline sf::FloatRect calculateLetterboxViewport(const sf::Vector2u &windowSize, 
 inline void clampViewToWorld(sf::View *view)
 {
     sf::Vector2f size = view->getSize();
-    size.x = std::min(size.x, DEF_WIDTH);
-    size.y = std::min(size.y, DEF_HEIGHT);
+    size.x = std::min(size.x, MAX_VIEW_WIDTH);
+    size.y = std::min(size.y, MAX_VIEW_HEIGHT);
     view->setSize(size);
 
     sf::Vector2f center = view->getCenter();
     const float halfWidth = size.x * 0.5f;
     const float halfHeight = size.y * 0.5f;
 
-    if (size.x >= DEF_WIDTH)
+    if (size.x >= MAX_VIEW_WIDTH)
     {
         center.x = DEF_WIDTH * 0.5f;
     }
     else
     {
-        center.x = std::clamp(center.x, halfWidth, DEF_WIDTH - halfWidth);
+        center.x = std::clamp(center.x, DEF_WIDTH * 0.5f - MAX_VIEW_WIDTH * 0.5f + halfWidth, DEF_WIDTH * 0.5f + MAX_VIEW_WIDTH * 0.5f - halfWidth);
     }
 
-    if (size.y >= DEF_HEIGHT)
+    if (size.y >= MAX_VIEW_HEIGHT)
     {
         center.y = DEF_HEIGHT * 0.5f;
     }
     else
     {
-        center.y = std::clamp(center.y, halfHeight, DEF_HEIGHT - halfHeight);
+        center.y = std::clamp(center.y, DEF_HEIGHT * 0.5f - MAX_VIEW_HEIGHT * 0.5f + halfHeight, DEF_HEIGHT * 0.5f + MAX_VIEW_HEIGHT * 0.5f - halfHeight);
     }
 
     view->setCenter(center);
@@ -77,8 +78,11 @@ inline void handleResize(sf::Window *window, sf::View *newView, sf::View *oldVie
 inline void handleZoom(sf::RenderWindow *window, sf::View *newView, sf::View *oldView, float delta, float *accumulatedZoom)
 {
     auto viewSize = oldView->getSize();
-    float decFactor = 1 - ZOOM_STEP;
-    float incFactor = 1 + ZOOM_STEP;
+    // Scaled by the scroll delta's own magnitude, not just its sign - otherwise a fast
+    // trackpad flick zooms by the same tiny step as a single slow tick, which reads as choppy.
+    const float zoomAmount = std::min(ZOOM_STEP * std::abs(delta), 0.5f);
+    float decFactor = 1.0f - zoomAmount;
+    float incFactor = 1.0f + zoomAmount;
 
     sf::Vector2i mousePixelPos = sf::Mouse::getPosition(*window);
     sf::Vector2f mouseWorldPosBefore = window->mapPixelToCoords(mousePixelPos, *oldView);
@@ -88,7 +92,7 @@ inline void handleZoom(sf::RenderWindow *window, sf::View *newView, sf::View *ol
         newView->zoom(decFactor);
         *accumulatedZoom /= incFactor;
     }
-    else if (delta < 0 && viewSize.x * incFactor <= DEF_WIDTH && viewSize.y * incFactor <= DEF_HEIGHT)
+    else if (delta < 0 && viewSize.x * incFactor <= MAX_VIEW_WIDTH && viewSize.y * incFactor <= MAX_VIEW_HEIGHT)
     {
         newView->zoom(incFactor);
         *accumulatedZoom /= decFactor;

@@ -9,9 +9,9 @@
 class ChargedParticle
 {
 public:
-    ChargedParticle(Vec2 position, Vec2 velocity, float charge, float mass)
+    ChargedParticle(Vec2 position, Vec2 velocity, float charge, float mass, int id)
         : position(position), velocity(velocity), charge(charge), mass(mass),
-          trajectoryTraceEnabled(true)
+          trajectoryTraceEnabled(true), id(id)
     {
     }
 
@@ -22,4 +22,6 @@ public:
 
     bool trajectoryTraceEnabled;
     std::deque<Vec2> trajectoryTrace;
+
+    int id; // stable identity for selection/grab, independent of vector index
 };

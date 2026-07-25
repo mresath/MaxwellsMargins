@@ -6,6 +6,8 @@
 #include "electrostatics/EquipotentialTracer.hpp"
 #include "electrostatics/FieldSampler.hpp"
 #include "engine/FieldMath.hpp"
+#include "magnetism/ChargedParticle.hpp"
+#include "magnetism/CurrentWire.hpp"
 #include "math/Util.hpp"
 
 #include <imgui.h>
@@ -14,6 +16,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <string>
 
 namespace
@@ -50,16 +53,25 @@ void drawArrow(sf::RenderWindow &window, const Vec2 &originMeters, const Vec2 &d
     head[3] = {sf::Vector2f(tip.x + back.x - perp.x, tip.y + back.y - perp.y), color};
     window.draw(head);
 }
+
+void drawWireSegment(sf::RenderWindow &window, const Vec2 &start, const Vec2 &end, const sf::Color &color)
+{
+    sf::VertexArray line(sf::PrimitiveType::Lines, 2);
+    line[0] = {sf::Vector2f(metersToPixels(start.x), metersToPixels(start.y)), color};
+    line[1] = {sf::Vector2f(metersToPixels(end.x), metersToPixels(end.y)), color};
+    window.draw(line);
+}
 } // namespace
 
 Renderer::Renderer() = default;
 
-void Renderer::draw(sf::RenderWindow &window, Mode mode, const World &world, const CircuitGraph &circuit) const
+void Renderer::draw(sf::RenderWindow &window, Mode mode, const World &world, const CircuitGraph &circuit,
+                     const std::optional<std::pair<Vec2, Vec2>> &wirePreview) const
 {
     drawGridlines(window);
 
     if (mode == Mode::Fields)
-        drawWorld(window, world);
+        drawWorld(window, world, wirePreview);
     else
         drawCircuit(window, circuit);
 }
@@ -135,20 +147,26 @@ void Renderer::drawGridlines(sf::RenderWindow &window) const
     }
 }
 
-void Renderer::drawWorld(sf::RenderWindow &window, const World &world) const
+void Renderer::drawWorld(sf::RenderWindow &window, const World &world, const std::optional<std::pair<Vec2, Vec2>> &wirePreview) const
 {
-    // TODO(Phase 3/4): wires, particles + trajectory traces, loops.
-    const auto &charges = world.charges();
+    // Moving charged particles are E field sources too, so field vectors/lines/
+    // equipotentials sample every charge source (static + particles), not just world.charges().
+    const auto fieldSources = world.allChargeSources();
 
     if (showEquipotentials)
-        drawEquipotentials(window, charges);
+        drawEquipotentials(window, fieldSources);
     if (showFieldLines)
-        drawFieldLines(window, charges);
+        drawFieldLines(window, fieldSources);
     if (showFieldVectors)
-        drawFieldVectors(window, charges);
+        drawFieldVectors(window, fieldSources);
+    if (showMagneticField)
+        drawMagneticField(window, world);
 
-    drawGaussianSurfaces(window, world.gaussianSurfaces(), charges);
-    drawCharges(window, charges);
+    drawGaussianSurfaces(window, world.gaussianSurfaces(), world.charges());
+    drawWires(window, world.wires(), wirePreview);
+    drawWireForceReadouts(window, world);
+    drawParticles(window, world.particles());
+    drawCharges(window, world.charges());
 }
 
 void Renderer::drawCircuit(sf::RenderWindow &window, const CircuitGraph &circuit) const
@@ -251,7 +269,11 @@ void Renderer::drawEquipotentials(sf::RenderWindow &window, const std::vector<Po
         for (float radius : kRadii)
             levels.push_back(FieldMath::coulombPotential(charge.position + Vec2(radius, 0.0f), {charge}));
 
-    const auto segments = tracer.traceContours(charges, levels);
+    const sf::View view = window.getView();
+    const Vec2 minWorld = pixelsToMeters(Vec2(view.getCenter().x - view.getSize().x / 2.0f, view.getCenter().y - view.getSize().y / 2.0f));
+    const Vec2 maxWorld = pixelsToMeters(Vec2(view.getCenter().x + view.getSize().x / 2.0f, view.getCenter().y + view.getSize().y / 2.0f));
+
+    const auto segments = tracer.traceContours(charges, levels, minWorld, maxWorld);
     for (const auto &segment : segments)
     {
         if (segment.size() < 2)
@@ -287,5 +309,139 @@ void Renderer::drawGaussianSurfaces(sf::RenderWindow &window, const std::vector<
         const sf::Color &c = GAUSSIAN_SURFACE_COLOR;
         ImGui::GetForegroundDrawList()->AddText(ImVec2(static_cast<float>(screenPos.x), static_cast<float>(screenPos.y)),
                                                  IM_COL32(c.r, c.g, c.b, c.a), label.c_str());
+    }
+}
+
+namespace
+{
+// Out of the page: a dot, like the tip of an arrow pointing at the viewer. Into the page:
+// a cross, like the fletching of an arrow flying away.
+void drawFieldMarker(sf::RenderWindow &window, const Vec2 &pointMeters, float radiusMeters, bool outOfPage, const sf::Color &color)
+{
+    const float radiusPixels = metersToPixels(radiusMeters);
+    const sf::Vector2f centerPixels(metersToPixels(pointMeters.x), metersToPixels(pointMeters.y));
+
+    if (outOfPage)
+    {
+        sf::CircleShape dot(radiusPixels);
+        dot.setOrigin(sf::Vector2f(radiusPixels, radiusPixels));
+        dot.setPosition(centerPixels);
+        dot.setFillColor(color);
+        window.draw(dot);
+    }
+    else
+    {
+        sf::VertexArray cross(sf::PrimitiveType::Lines, 4);
+        cross[0] = {sf::Vector2f(centerPixels.x - radiusPixels, centerPixels.y - radiusPixels), color};
+        cross[1] = {sf::Vector2f(centerPixels.x + radiusPixels, centerPixels.y + radiusPixels), color};
+        cross[2] = {sf::Vector2f(centerPixels.x - radiusPixels, centerPixels.y + radiusPixels), color};
+        cross[3] = {sf::Vector2f(centerPixels.x + radiusPixels, centerPixels.y - radiusPixels), color};
+        window.draw(cross);
+    }
+}
+} // namespace
+
+void Renderer::drawMagneticField(sf::RenderWindow &window, const World &world) const
+{
+    const sf::View view = window.getView();
+    const Vec2 minWorld = pixelsToMeters(Vec2(view.getCenter().x - view.getSize().x / 2.0f, view.getCenter().y - view.getSize().y / 2.0f));
+    const Vec2 maxWorld = pixelsToMeters(Vec2(view.getCenter().x + view.getSize().x / 2.0f, view.getCenter().y + view.getSize().y / 2.0f));
+
+    for (float y = minWorld.y; y <= maxWorld.y; y += B_FIELD_MARKER_SPACING)
+    {
+        for (float x = minWorld.x; x <= maxWorld.x; x += B_FIELD_MARKER_SPACING)
+        {
+            const float field = world.magneticFieldAt(Vec2(x, y));
+            const float magnitude = std::abs(field);
+            if (magnitude < B_FIELD_MARKER_MIN_MAGNITUDE)
+                continue;
+
+            const float radius = B_FIELD_MARKER_MAX_RADIUS * (magnitude / (magnitude + B_FIELD_MARKER_SATURATION));
+            const sf::Color &color = field >= 0.0f ? B_FIELD_OUT_OF_PAGE_COLOR : B_FIELD_INTO_PAGE_COLOR;
+            drawFieldMarker(window, Vec2(x, y), radius, field >= 0.0f, color);
+        }
+    }
+}
+
+void Renderer::drawWires(sf::RenderWindow &window, const std::vector<CurrentWire> &wires, const std::optional<std::pair<Vec2, Vec2>> &wirePreview) const
+{
+    for (const auto &wire : wires)
+    {
+        drawWireSegment(window, wire.start, wire.end, CURRENT_WIRE_COLOR);
+
+        const Vec2 towardEnd = wire.end - wire.start;
+        const Vec2 flowDirection = wire.current >= 0.0f ? towardEnd : towardEnd * -1.0f;
+        const float arrowLength = std::min(0.3f, flowDirection.length() * 0.3f);
+        if (arrowLength > 1e-6f)
+        {
+            const Vec2 midpoint = (wire.start + wire.end) * 0.5f;
+            const Vec2 direction = flowDirection.normalized() * arrowLength;
+            drawArrow(window, midpoint - direction * 0.5f, direction, CURRENT_WIRE_COLOR);
+        }
+    }
+
+    if (wirePreview)
+        drawWireSegment(window, wirePreview->first, wirePreview->second, CURRENT_WIRE_COLOR);
+}
+
+void Renderer::drawWireForceReadouts(sf::RenderWindow &window, const World &world) const
+{
+    const auto &wires = world.wires();
+    for (std::size_t i = 0; i < wires.size(); ++i)
+    {
+        for (std::size_t j = i + 1; j < wires.size(); ++j)
+        {
+            const Vec2 segmentA = wires[i].end - wires[i].start;
+            const Vec2 segmentB = wires[j].end - wires[j].start;
+            const float lengthA = segmentA.length();
+            const float lengthB = segmentB.length();
+            if (lengthA < 1e-6f || lengthB < 1e-6f)
+                continue;
+
+            const Vec2 dirA = segmentA / lengthA;
+            const Vec2 dirB = segmentB / lengthB;
+            const float alignment = dot(dirA, dirB);
+            if (std::abs(alignment) < WIRE_PARALLEL_DOT_THRESHOLD)
+                continue;
+
+            const float separation = std::abs(cross(dirA, wires[j].start - wires[i].start));
+            // Flip current2's sign for an anti-parallel pair, so it still means "same
+            // real-world direction" rather than "same as this wire's own start->end".
+            const float current2 = alignment >= 0.0f ? wires[j].current : -wires[j].current;
+            const float force = FieldMath::forceBetweenWires(wires[i].current, current2, separation, std::min(lengthA, lengthB), world.permeabilityFactor());
+
+            const Vec2 midpoint = ((wires[i].start + wires[i].end) * 0.5f + (wires[j].start + wires[j].end) * 0.5f) * 0.5f;
+            const std::string label = fmt::format("F = {:.3g} N ({})", std::abs(force), force >= 0.0f ? "Attract" : "Repel");
+
+            const sf::Vector2f labelWorldPos(metersToPixels(midpoint.x), metersToPixels(midpoint.y));
+            const sf::Vector2i screenPos = window.mapCoordsToPixel(labelWorldPos, window.getView());
+
+            const sf::Color &c = CURRENT_WIRE_COLOR;
+            ImGui::GetForegroundDrawList()->AddText(ImVec2(static_cast<float>(screenPos.x), static_cast<float>(screenPos.y)),
+                                                     IM_COL32(c.r, c.g, c.b, c.a), label.c_str());
+        }
+    }
+}
+
+void Renderer::drawParticles(sf::RenderWindow &window, const std::vector<ChargedParticle> &particles) const
+{
+    for (const auto &particle : particles)
+    {
+        if (particle.trajectoryTraceEnabled && particle.trajectoryTrace.size() >= 2)
+        {
+            sf::VertexArray trace(sf::PrimitiveType::LineStrip, particle.trajectoryTrace.size());
+            for (std::size_t p = 0; p < particle.trajectoryTrace.size(); ++p)
+                trace[p] = {sf::Vector2f(metersToPixels(particle.trajectoryTrace[p].x), metersToPixels(particle.trajectoryTrace[p].y)), sf::Color(TRAJECTORY_TRACE_COLOR)};
+            window.draw(trace);
+        }
+
+        const float radiusPixels = metersToPixels(PARTICLE_RADIUS);
+        sf::CircleShape shape(radiusPixels);
+        shape.setOrigin(sf::Vector2f(radiusPixels, radiusPixels));
+        shape.setPosition(sf::Vector2f(metersToPixels(particle.position.x), metersToPixels(particle.position.y)));
+        shape.setFillColor(particle.charge >= 0.0f ? POSITIVE_CHARGE_COLOR : NEGATIVE_CHARGE_COLOR);
+        shape.setOutlineColor(sf::Color::White);
+        shape.setOutlineThickness(1.0f);
+        window.draw(shape);
     }
 }

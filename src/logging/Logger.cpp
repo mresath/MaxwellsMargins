@@ -38,6 +38,6 @@ void Logger::reset()
 
 void Logger::save(const std::string &path) const
 {
-    // TODO(Phase 6): write JSON log to `path` (nlohmann::json), like NN's Logger
+    // TODO(Phase 6): write JSON log to `path` (nlohmann::json)
     (void)path;
 }

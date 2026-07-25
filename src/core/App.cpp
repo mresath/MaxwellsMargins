@@ -2,7 +2,6 @@
 
 #include "Config.hpp"
 #include "core/UI.hpp"
-#include "electrostatics/FieldSampler.hpp"
 #include "math/Util.hpp"
 #include "math/Vec2.hpp"
 #include "scenes/Presets.hpp"
@@ -15,6 +14,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace
@@ -85,6 +85,10 @@ const char *iconTextureFor(ToolType tool)
         return "gaussian_surface";
     case ToolType::FieldProbe:
         return "field_probe";
+    case ToolType::PlaceChargedParticle:
+        return "charged_particle";
+    case ToolType::PlaceCurrentWire:
+        return "current_wire";
     default:
         return "blank";
     }
@@ -130,7 +134,7 @@ App::App()
 
     m_window.setFramerateLimit(MAX_FPS);
 
-    for (const char *name : {"cursor", "hand", "trash", "positive_charge", "negative_charge", "gaussian_surface", "field_probe"})
+    for (const char *name : {"cursor", "hand", "trash", "positive_charge", "negative_charge", "gaussian_surface", "field_probe", "charged_particle", "current_wire"})
     {
         sf::Texture texture;
         texture.setSmooth(true);
@@ -234,6 +238,7 @@ void App::processEvents()
             }
             else if (const auto *mouseMoved = event->getIf<sf::Event::MouseMoved>())
             {
+                const Vec2 previousMouseWorldMeters = m_mouseWorldMeters;
                 const sf::Vector2f worldPixelPos = m_window.mapPixelToCoords(sf::Vector2i(mouseMoved->position), m_view);
                 m_mouseWorldMeters = pixelsToMeters(Vec2(worldPixelPos.x, worldPixelPos.y));
 
@@ -246,6 +251,22 @@ void App::processEvents()
                 {
                     if (GaussianSurface *surface = m_world.findGaussianSurface(m_grabbedId))
                         surface->center = m_mouseWorldMeters;
+                }
+                else if (m_grabbedKind == EntityKind::Particle)
+                {
+                    if (ChargedParticle *particle = m_world.findParticle(m_grabbedId))
+                        particle->position = m_mouseWorldMeters;
+                }
+                else if (m_grabbedKind == EntityKind::Wire)
+                {
+                    // A wire has two points, so Move translates both by the cursor's
+                    // frame-to-frame delta instead of snapping a single point to it.
+                    if (CurrentWire *wire = m_world.findWire(m_grabbedId))
+                    {
+                        const Vec2 delta = m_mouseWorldMeters - previousMouseWorldMeters;
+                        wire->start += delta;
+                        wire->end += delta;
+                    }
                 }
 
                 if (m_isPanning)
@@ -276,6 +297,8 @@ void App::processEvents()
                             beginGrab(pos);
                         else if (m_tools.activeTool() == ToolType::Select)
                             selectAt(pos);
+                        else if (m_tools.activeTool() == ToolType::PlaceCurrentWire)
+                            m_tools.beginWireDrag(pos);
                         else
                             m_tools.onClick(pos, m_world);
                     }
@@ -294,7 +317,11 @@ void App::processEvents()
             if (mouseUp->button == sf::Mouse::Button::Right)
                 m_isPanning = false;
             else if (mouseUp->button == sf::Mouse::Button::Left)
+            {
+                if (m_tools.activeTool() == ToolType::PlaceCurrentWire && m_tools.isDraggingWire())
+                    m_tools.finishWireDrag(m_mouseWorldMeters, m_world);
                 m_grabbedKind = EntityKind::None;
+            }
         }
 
         m_view = newView;
@@ -308,7 +335,7 @@ void App::beginGrab(const Vec2 &pos)
     m_grabbedKind = hit.kind;
     m_grabbedId = hit.id;
 
-    // Matches Newton's Notepad: grabbing an object with Move also selects it.
+    // Grabbing an object with Move also selects it.
     if (hit.kind != EntityKind::None)
     {
         m_selectedKind = hit.kind;
@@ -341,7 +368,11 @@ void App::draw()
         drawSettingsPanel();
 
     m_window.clear(BACKGROUND_COLOR);
-    m_renderer.draw(m_window, m_mode, m_world, m_circuit);
+
+    std::optional<std::pair<Vec2, Vec2>> wirePreview;
+    if (m_tools.isDraggingWire())
+        wirePreview = std::make_pair(m_tools.wireDragStart(), m_mouseWorldMeters);
+    m_renderer.draw(m_window, m_mode, m_world, m_circuit, wirePreview);
 
     ImGui::SFML::Render(m_window);
     m_window.display();
@@ -410,6 +441,9 @@ void App::drawToolSettingsPanel(float toolsPanelWidth)
         float magnitude = m_tools.chargeMagnitude();
         if (ImGui::DragFloat("Magnitude (C)", &magnitude, CHARGE_MAGNITUDE_STEP, MIN_CHARGE_MAGNITUDE, MAX_CHARGE_MAGNITUDE, "%.3g"))
             m_tools.setChargeMagnitude(magnitude);
+        ImGui::SameLine();
+        if (ImGui::Button("e"))
+            m_tools.setChargeMagnitude(ELEMENTARY_CHARGE);
     }
     else if (m_mode == Mode::Fields && tool == ToolType::DrawGaussianSurface)
     {
@@ -419,30 +453,73 @@ void App::drawToolSettingsPanel(float toolsPanelWidth)
         if (ImGui::DragFloat("Radius (m)", &radius, GAUSSIAN_SURFACE_RADIUS_STEP, MIN_GAUSSIAN_SURFACE_RADIUS, MAX_GAUSSIAN_SURFACE_RADIUS, "%.2f"))
             m_tools.setGaussianRadius(radius);
     }
+    else if (m_mode == Mode::Fields && tool == ToolType::PlaceChargedParticle)
+    {
+        ImGui::Text("Left Click to place a charged particle");
+        ImGui::Separator();
+
+        bool positive = m_tools.particleChargePositive();
+        if (ImGui::RadioButton("Positive", positive))
+            m_tools.setParticleChargePositive(true);
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Negative", !positive))
+            m_tools.setParticleChargePositive(false);
+
+        float magnitude = m_tools.particleChargeMagnitude();
+        if (ImGui::DragFloat("Charge (C)", &magnitude, PARTICLE_CHARGE_MAGNITUDE_STEP, MIN_PARTICLE_CHARGE_MAGNITUDE, MAX_PARTICLE_CHARGE_MAGNITUDE, "%.3g"))
+            m_tools.setParticleChargeMagnitude(magnitude);
+        ImGui::SameLine();
+        if (ImGui::Button("e"))
+            m_tools.setParticleChargeMagnitude(ELEMENTARY_CHARGE);
+
+        float mass = m_tools.particleMass();
+        if (ImGui::DragFloat("Mass (kg)", &mass, PARTICLE_MASS_STEP, MIN_PARTICLE_MASS, MAX_PARTICLE_MASS, "%.3g"))
+            m_tools.setParticleMass(mass);
+        ImGui::SameLine();
+        if (ImGui::Button("e-"))
+            m_tools.setParticleMass(ELECTRON_MASS);
+        ImGui::SameLine();
+        if (ImGui::Button("p+"))
+            m_tools.setParticleMass(PROTON_MASS);
+
+        float speed = m_tools.particleSpeed();
+        if (ImGui::DragFloat("Initial Speed (m/s)", &speed, PARTICLE_SPEED_STEP, MIN_PARTICLE_SPEED, MAX_PARTICLE_SPEED, "%.2f"))
+            m_tools.setParticleSpeed(speed);
+        ImGui::TextDisabled("Launched along +x");
+    }
+    else if (m_mode == Mode::Fields && tool == ToolType::PlaceCurrentWire)
+    {
+        ImGui::Text("Left Click and drag to draw a wire");
+        ImGui::Separator();
+        float current = m_tools.wireCurrent();
+        if (ImGui::DragFloat("Current (A)", &current, WIRE_CURRENT_STEP, MIN_WIRE_CURRENT, MAX_WIRE_CURRENT, "%.2f"))
+            m_tools.setWireCurrent(current);
+    }
     else if (m_mode == Mode::Fields && tool == ToolType::FieldProbe)
     {
-        const FieldSampler sampler;
-        const Vec2 field = sampler.fieldAt(m_mouseWorldMeters, m_world.charges());
-        const float potential = sampler.potentialAt(m_mouseWorldMeters, m_world.charges());
+        const Vec2 field = m_world.electricFieldAt(m_mouseWorldMeters);
+        const float potential = m_world.electricPotentialAt(m_mouseWorldMeters);
+        const float magneticField = m_world.magneticFieldAt(m_mouseWorldMeters);
         constexpr float kRadToDeg = 180.0f / 3.14159265358979f;
 
         ImGui::Text("Hover to read the field/potential at the cursor");
         ImGui::Separator();
         ImGui::Text("Position: %s m", m_mouseWorldMeters.toString().c_str());
         ImGui::Text("Potential: %.4g V", potential);
-        ImGui::Text("Field: %.4g N/C @ %.1f deg", field.length(), field.angle() * kRadToDeg);
+        ImGui::Text("E Field: %.4g N/C @ %.1f deg", field.length(), field.angle() * kRadToDeg);
+        ImGui::Text("B Field: %.4g T (%s)", magneticField, magneticField >= 0.0f ? "out of page" : "into page");
     }
     else if (tool == ToolType::Move)
     {
-        ImGui::Text("Left Click and drag to move a charge or Gaussian surface");
+        ImGui::Text("Left Click and drag to move a charge, particle, wire, or Gaussian surface");
     }
     else if (tool == ToolType::Erase)
     {
-        ImGui::Text("Left Click to erase a charge or Gaussian surface");
+        ImGui::Text("Left Click to erase a charge, particle, wire, or Gaussian surface");
     }
     else if (tool == ToolType::Select)
     {
-        ImGui::Text("Left Click to select a charge or Gaussian surface");
+        ImGui::Text("Left Click to select a charge, particle, wire, or Gaussian surface");
     }
     else
     {
@@ -480,6 +557,9 @@ void App::drawPropertiesPanel()
             charge->charge = -magnitude;
         if (ImGui::DragFloat("Magnitude (C)", &magnitude, CHARGE_MAGNITUDE_STEP, MIN_CHARGE_MAGNITUDE, MAX_CHARGE_MAGNITUDE, "%.3g"))
             charge->charge = positive ? magnitude : -magnitude;
+        ImGui::SameLine();
+        if (ImGui::Button("e"))
+            charge->charge = positive ? ELEMENTARY_CHARGE : -ELEMENTARY_CHARGE;
         ImGui::Text("Position: %s m", charge->position.toString().c_str());
 
         ImGui::End();
@@ -504,6 +584,73 @@ void App::drawPropertiesPanel()
 
         ImGui::End();
     }
+    else if (m_selectedKind == EntityKind::Particle)
+    {
+        ChargedParticle *particle = m_world.findParticle(m_selectedId);
+        if (!particle)
+        {
+            m_selectedKind = EntityKind::None;
+            return;
+        }
+
+        ImGui::SetNextWindowPos(ImVec2(10.0f, 300.0f), ImGuiCond_Once);
+        ImGui::Begin("Properties", nullptr, kMovableFlags);
+        ImGui::Text("Charged Particle");
+        ImGui::Separator();
+
+        bool positive = particle->charge >= 0.0f;
+        float magnitude = std::abs(particle->charge);
+        if (ImGui::RadioButton("Positive", positive))
+            particle->charge = magnitude;
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Negative", !positive))
+            particle->charge = -magnitude;
+        if (ImGui::DragFloat("Charge (C)", &magnitude, PARTICLE_CHARGE_MAGNITUDE_STEP, MIN_PARTICLE_CHARGE_MAGNITUDE, MAX_PARTICLE_CHARGE_MAGNITUDE, "%.3g"))
+            particle->charge = positive ? magnitude : -magnitude;
+        ImGui::SameLine();
+        if (ImGui::Button("e"))
+            particle->charge = positive ? ELEMENTARY_CHARGE : -ELEMENTARY_CHARGE;
+
+        ImGui::DragFloat("Mass (kg)", &particle->mass, PARTICLE_MASS_STEP, MIN_PARTICLE_MASS, MAX_PARTICLE_MASS, "%.3g");
+        ImGui::SameLine();
+        if (ImGui::Button("e-"))
+            particle->mass = ELECTRON_MASS;
+        ImGui::SameLine();
+        if (ImGui::Button("p+"))
+            particle->mass = PROTON_MASS;
+
+        float velocity[2] = {particle->velocity.x, particle->velocity.y};
+        if (ImGui::DragFloat2("Velocity (m/s)", velocity, 0.1f))
+            particle->velocity = Vec2(velocity[0], velocity[1]);
+
+        ImGui::Text("Position: %s m", particle->position.toString().c_str());
+        ImGui::Checkbox("Trajectory Trace", &particle->trajectoryTraceEnabled);
+        ImGui::SameLine();
+        if (ImGui::Button("Clear"))
+            particle->trajectoryTrace.clear();
+
+        ImGui::End();
+    }
+    else if (m_selectedKind == EntityKind::Wire)
+    {
+        CurrentWire *wire = m_world.findWire(m_selectedId);
+        if (!wire)
+        {
+            m_selectedKind = EntityKind::None;
+            return;
+        }
+
+        ImGui::SetNextWindowPos(ImVec2(10.0f, 300.0f), ImGuiCond_Once);
+        ImGui::Begin("Properties", nullptr, kMovableFlags);
+        ImGui::Text("Current Wire");
+        ImGui::Separator();
+
+        ImGui::DragFloat("Current (A)", &wire->current, WIRE_CURRENT_STEP, MIN_WIRE_CURRENT, MAX_WIRE_CURRENT, "%.2f");
+        ImGui::Text("Start: %s m", wire->start.toString().c_str());
+        ImGui::Text("End: %s m", wire->end.toString().c_str());
+
+        ImGui::End();
+    }
 }
 
 void App::drawSettingsPanel()
@@ -522,9 +669,29 @@ void App::drawSettingsPanel()
         ImGui::Separator();
         ImGui::Checkbox("Field Vectors", &m_renderer.showFieldVectors);
         ImGui::Checkbox("Field Lines", &m_renderer.showFieldLines);
+        ImGui::Checkbox("Equipotential Lines", &m_renderer.showEquipotentials);
+        ImGui::Checkbox("Magnetic Field", &m_renderer.showMagneticField);
+        ImGui::Separator();
+        ImGui::Checkbox("Uniform B Field", &m_world.uniformField().enabled);
+        if (m_world.uniformField().enabled)
+            ImGui::DragFloat("B Strength (T)", &m_world.uniformField().strength, 0.05f, MIN_B_FIELD_STRENGTH, MAX_B_FIELD_STRENGTH, "%.2f");
+        float permeabilityFactor = m_world.permeabilityFactor();
+        if (ImGui::DragFloat("Permeability Factor", &permeabilityFactor, PERMEABILITY_FACTOR_STEP, MIN_PERMEABILITY_FACTOR, MAX_PERMEABILITY_FACTOR, "%.3g"))
+            m_world.setPermeabilityFactor(permeabilityFactor);
+        ImGui::SameLine();
+        if (ImGui::Button("1x"))
+            m_world.setPermeabilityFactor(1.0f);
         ImGui::Separator();
         if (ImGui::Button("Load Dipole Field Preset"))
             Presets::loadDipoleField(m_world);
+        if (ImGui::Button("Load Particle in Uniform B Preset"))
+            Presets::loadParticleInUniformB(m_world);
+        if (ImGui::Button("Reset Simulation"))
+        {
+            m_world.reset();
+            m_grabbedKind = EntityKind::None;
+            m_selectedKind = EntityKind::None;
+        }
     }
 
     const ImVec2 settingsWindowSize = ImGui::GetWindowSize();

@@ -40,7 +40,7 @@ classes and the physics itself lives in one place.
 ```
 src/
 ├── main.cpp
-├── Config.hpp                  constants (mirrors NN/SS Config.hpp)
+├── Config.hpp                  constants
 ├── assets/                     logo, icons
 ├── core/                       App (window/loop/mode switch), UI (view helpers),
 │                               World (Fields-mode scene), Tools (interaction)
@@ -63,10 +63,9 @@ under `vendor/SFML`).
 
 ## Current status
 
-Folder structure, module interfaces (header class shells), CMakeLists.txt, and doc files
-are scaffolded. No simulation logic is implemented yet. Vendor submodules
-(`imgui`, `imgui-sfml`, `fmt`, `json`, `matplotplusplus`) still need to be added
-(`git submodule add <url> vendor/<name>`) before the project will configure/build.
+Phases 0-3 are complete: app shell, electrostatics, and magnetism (uniform field, current
+wires, charged particles, including their mutual E/B interaction via `World`'s global-field
+query methods). Circuits, induction, and cross-cutting polish (Phases 4-6) remain.
 
 ## Phases
 
@@ -130,6 +129,7 @@ are scaffolded. No simulation logic is implemented yet. Vendor submodules
 - **Solver**: fixed-step DOPRI5-style (not adaptive) per the "single robust solver" requirement. Revisit if RC time constants and particle-in-B timescales turn out to need very different step sizes simultaneously.
 - **Circuits solve method**: modified nodal analysis (MNA) rather than mesh/loop analysis, since it generalizes better to arbitrary topologies added incrementally by a user (no need to detect independent loops).
 - **Inductors**: modeled as a `Component` in `circuits/` (RL behavior is circuit-local), separate from `induction/`'s spatial moving-loop EMF generation - these are physically distinct even though both are "induction."
+- **Magnetism scale**: the true mu_0 makes wire/particle-generated fields negligible at electrostatics' charge scale, so `permeabilityFactor` is a user-adjustable multiplier (default high, "1x" button for real physics) rather than a baked-in fudge - capped so a particle at closest wire approach can't exceed the fixed-step solver's cyclotron stability limit. Charge and mass move together (same ratio drives cyclotron frequency) so this stays stable.
 
 ## Checklist
 
@@ -161,18 +161,18 @@ are scaffolded. No simulation logic is implemented yet. Vendor submodules
 - [x] `EquipotentialTracer` + equipotential line rendering
 - [x] `GaussianSurface` draw tool + enclosed-charge/flux readout
 - [x] Preset: `scenes::loadDipoleField` (wired to a button in the Settings modal)
-- [ ] Acceptance: superposed field vectors/lines and equipotentials match Coulomb's law; Gauss tool reports correct enclosed charge. Verified: builds cleanly and launches without crashing. Not yet verified: interactive click-through of charge/Gaussian-surface placement in the running app (GUI scripting was blocked by a macOS Accessibility permission prompt) - needs a manual pass.
+- [x] Acceptance: superposed field vectors/lines and equipotentials match Coulomb's law; Gauss tool reports correct enclosed charge. Verified interactively (charge/Gaussian-surface placement, field visuals) in the running app.
 
 ### Phase 3 - Magnetism
 
-- [ ] `UniformBField` toggle + strength control
-- [ ] `ChargedParticle` placement tool
-- [ ] `engine/FieldMath::lorentzForce`
-- [ ] Particle motion integrated via `engine/Solver` (circular/helical trajectories + path traces)
-- [ ] `CurrentWire` placement; field via `biotSavartField` (right-hand rule visualization)
-- [ ] `forceBetweenWires` + on-canvas force readout for two parallel wires
-- [ ] Preset: `scenes::loadParticleInUniformB`
-- [ ] Acceptance: particle radius matches `r = mv/qB`; wire force direction/magnitude correct
+- [x] `UniformBField` toggle + strength control
+- [x] `ChargedParticle` placement tool
+- [x] `engine/FieldMath::lorentzForce`
+- [x] Particle motion integrated via `engine/Solver` (circular/helical trajectories + path traces)
+- [x] `CurrentWire` placement; field via `biotSavartField` (right-hand rule visualization)
+- [x] `forceBetweenWires` + on-canvas force readout for two parallel wires
+- [x] Preset: `scenes::loadParticleInUniformB`
+- [x] Acceptance: particle radius matches `r = mv/qB`; wire force direction/magnitude correct. Verified interactively (uniform-B preset, particle-near-wire, two-wire force readout).
 
 ### Phase 4 - Induction
 

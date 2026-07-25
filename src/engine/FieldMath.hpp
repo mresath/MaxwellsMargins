@@ -11,12 +11,23 @@ class CurrentWire;
 // the Lorentz force. Used by electrostatics, magnetism, and induction modules alike.
 namespace FieldMath
 {
+// Single-source E field/potential; also used directly by World for charged particles,
+// which aren't stored in a PointCharge list.
+Vec2 pointChargeField(const Vec2 &point, const Vec2 &sourcePosition, float sourceCharge);
+float pointChargePotential(const Vec2 &point, const Vec2 &sourcePosition, float sourceCharge);
+
 Vec2 coulombField(const Vec2 &point, const std::vector<PointCharge> &charges);
 float coulombPotential(const Vec2 &point, const std::vector<PointCharge> &charges);
 float coulombForceMagnitude(float q1, float q2, float separation);
 
-Vec2 biotSavartField(const Vec2 &point, const CurrentWire &wire);
-float forceBetweenWires(float current1, float current2, float separation, float length);
+// A wire's field at any in-plane point is purely perpendicular to the plane (right-hand
+// rule) - a signed scalar, matching UniformBField, not an in-plane Vec2.
+float biotSavartField(const Vec2 &point, const std::vector<CurrentWire> &wires, float permeabilityFactor);
+float forceBetweenWires(float current1, float current2, float separation, float length, float permeabilityFactor);
+
+// B field of a single moving point charge (point-charge Biot-Savart: mu0/4*pi * q * (v x
+// r_hat) / r^2) - signed scalar for the same reason as biotSavartField.
+float movingChargeField(const Vec2 &point, const Vec2 &sourcePosition, const Vec2 &sourceVelocity, float sourceCharge, float permeabilityFactor);
 
 Vec2 lorentzForce(float charge, const Vec2 &velocity, const Vec2 &electricField, float bFieldStrength);
 } // namespace FieldMath

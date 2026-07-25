@@ -7,9 +7,10 @@
 class CurrentWire
 {
 public:
-    CurrentWire(Vec2 start, Vec2 end, float current) : start(start), end(end), current(current) {}
+    CurrentWire(Vec2 start, Vec2 end, float current, int id) : start(start), end(end), current(current), id(id) {}
 
     Vec2 start;
     Vec2 end;
     float current; // Amperes, signed for direction along start->end
+    int id;         // stable identity for selection/grab, independent of vector index
 };

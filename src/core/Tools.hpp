@@ -49,8 +49,36 @@ public:
     float gaussianRadius() const;
     void setGaussianRadius(float radius);
 
+    float particleChargeMagnitude() const;
+    void setParticleChargeMagnitude(float magnitude);
+    bool particleChargePositive() const;
+    void setParticleChargePositive(bool positive);
+    float particleMass() const;
+    void setParticleMass(float mass);
+    float particleSpeed() const;
+    void setParticleSpeed(float speed);
+
+    float wireCurrent() const;
+    void setWireCurrent(float current);
+
+    // A wire needs two points, so it's placed by click-drag (start on press, end on
+    // release) rather than the single-click Tools::onClick path.
+    bool isDraggingWire() const;
+    Vec2 wireDragStart() const;
+    void beginWireDrag(const Vec2 &worldPos);
+    void finishWireDrag(const Vec2 &worldPos, World &world);
+
 private:
     ToolType m_activeTool;
     float m_chargeMagnitude;
     float m_gaussianRadius;
+
+    float m_particleChargeMagnitude;
+    bool m_particleChargePositive;
+    float m_particleMass;
+    float m_particleSpeed;
+
+    float m_wireCurrent;
+    bool m_wireDragActive;
+    Vec2 m_wireDragStart;
 };

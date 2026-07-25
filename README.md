@@ -16,10 +16,10 @@ A physics simulator/playground with the following features:
   - Field Vectors & Field Lines (Toggleable)
   - Equipotential Lines
   - Gaussian Surfaces (Enclosed Charge & Flux)
-- Magnetism (In Development)
+- Magnetism
   - Uniform Magnetic Fields
-  - Charged Particles (Lorentz Force)
-  - Current-Carrying Wires
+  - Charged Particles (Lorentz Force, Mutual E/B Interaction)
+  - Current-Carrying Wires (Force Between Wires)
 - Circuits (In Development)
   - Resistors, Capacitors, Batteries, Switches
   - Ammeter/Voltmeter Probes
@@ -53,7 +53,7 @@ Not yet released. To build from source, see [Building](#building) below.
 - `Esc`: toggle settings
 - `P`: pause/resume simulation
 
-UI panels: `Stats`, `Tools`, `Tool Settings`, `Properties` (appears once a charge or Gaussian surface is selected), `Settings` (`Esc`, holds the mode tabs, presets, and overlay toggles)
+UI panels: `Stats`, `Tools`, `Tool Settings`, `Properties` (appears once a charge, particle, wire, or Gaussian surface is selected), `Settings` (`Esc`, holds the mode tabs, presets, and overlay toggles)
 
 ## Electrostatics
 
@@ -62,14 +62,25 @@ UI panels: `Stats`, `Tools`, `Tool Settings`, `Properties` (appears once a charg
 - Field lines are traced with midpoint (RK2) integration for smooth curves near strong field gradients
 - Equipotential lines are extracted via marching squares over a sampled potential grid
 - Gaussian surfaces report enclosed charge and flux (`Q_enc / epsilon_0`) live as charges move in or out of them
-- The Field Probe tool reads live position, potential, and field magnitude/direction at the cursor
+- The Field Probe tool reads live position, potential, and E/B field at the cursor
+- A charge or particle's magnitude field has a quick "e" button for the real elementary charge
+
+## Magnetism
+
+- A uniform B field (into/out of page) and current-carrying wires are toggleable/adjustable from Settings and the Wire tool respectively
+- Charged particles feel the Lorentz force from every source at once (charges, the uniform field, wires, and each other) and are integrated with a fixed-step Dormand-Prince solver, leaving a trajectory trace
+- Moving charges also generate their own field, so two particles - or a particle and a wire - interact magnetically, not just electrically
+- Field markers (dots for out-of-page, crosses for into-page) visualize the combined B field anywhere on the canvas
+- Two roughly-parallel wires get a live attract/repel force readout
+- A particle's mass field has quick "e-"/"p+" buttons for the real electron/proton mass
+- Since the real magnetic constant makes these effects negligible at electrostatics' charge scale, a `Permeability Factor` setting (default high, "1x" button for real physics) scales it up - the same idea as electrostatics' unrealistically large default charge
 
 ## Presets
 
 - **Dipole Field**: two equal-and-opposite point charges, for exploring field vector/line and equipotential behavior around a classic charge configuration
+- **Particle in Uniform B Field**: a charged particle tracing a circular path through a uniform magnetic field
 - **Parallel Plate Capacitor** (In Development): a battery-charged capacitor demo for circuits mode
 - **Simple RC Circuit** (In Development): a battery, resistor, and capacitor for exploring charge/discharge transients
-- **Particle in Uniform B Field** (In Development): a charged particle tracing a circular/helical path through a uniform magnetic field
 
 ## Notes
 

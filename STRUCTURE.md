@@ -6,7 +6,7 @@ You can use AI for such updates, but all text should be human-reviewed.
 
 # Codebase Structure
 
-> **Scaffold status**: Phase 1 (the app shell) and Phase 2 (electrostatics) are implemented; Phase 1 is build+launch verified, Phase 2 builds cleanly and is pending an interactive manual pass. Magnetism/induction/circuits, and the shared solver, are still stub interfaces (header class shells, `TODO(Phase N)` method bodies) - see [PLAN.md](PLAN.md) for the phased build order.
+> **Status**: Phases 0-3 are implemented and interactively verified - app shell, electrostatics, and magnetism (uniform field, current wires, charged particles). Induction/circuits, and cross-cutting polish, remain - see [PLAN.md](PLAN.md) for the phased build order.
 
 ## Core Directories and Files
 
@@ -23,7 +23,7 @@ You can use AI for such updates, but all text should be human-reviewed.
 - **Contains**:
   - Window/world dimensions, grid spacing/colors, UI spacing
   - Engine settings: calculation frequency, max dt, max FPS
-  - Per-domain constants: Coulomb's constant and charge magnitude limits (electrostatics), B-field strength limits (magnetism), resistance/capacitance/inductance/EMF limits (circuits), plus colors for charges, field vectors/lines, equipotentials, Gaussian surfaces, wires, and current-flow
+  - Per-domain constants: Coulomb's constant, charge magnitude limits and the real elementary charge/electron/proton mass (electrostatics/magnetism, selectable via quick-set buttons), B-field strength and the adjustable `permeabilityFactor` limits (magnetism), resistance/capacitance/inductance/EMF limits (circuits), plus colors for charges, field vectors/lines, equipotentials, Gaussian surfaces, wires, and current-flow
 
 ---
 
@@ -48,39 +48,40 @@ You can use AI for such updates, but all text should be human-reviewed.
   - Owns one `World` (Fields mode), one `CircuitGraph` (Circuits mode), one `Tools`, one `Renderer`, one `Logger`, one `Grapher` - only one scene is active/visible at a time, gated by `m_mode`
 - **Key methods** (implemented):
   - `run()`: fixed-timestep accumulator loop (`CALC_FREQ`, capped at `MAX_UPDATES_PER_FRAME`) around `processEvents()`/`update()`/`draw()`
-  - `processEvents()`: window close/resize, pan (`RMB` drag)/zoom (wheel)/reset view (`MMB`), `Esc` opens Settings, `P` pauses independently, left-click position is converted pixels->meters; Move hit-tests via `World::findEntityAt` and grabs (`beginGrab`), Select hit-tests and sets the persistent selection (`selectAt`), everything else routes to `Tools::onClick`. `m_mouseWorldMeters` is tracked continuously for the Field Probe readout; a grabbed entity's position/center is updated on every mouse move
-  - `drawToolsPanel()`/`drawToolSettingsPanel()`: always-visible, fixed top-left panels; Tool Settings shows per-tool controls (charge magnitude, Gaussian radius, Field Probe's live readout, Move/Erase/Select hints)
-  - `drawPropertiesPanel()`: draws once `m_selectedKind != EntityKind::None` and the entity still exists (re-checked by id each frame, so it self-clears if the selection was erased) - editable magnitude/sign for a charge, radius for a Gaussian surface
-  - `drawSettingsPanel()`: `Esc`-toggled modal with the Fields/Circuits mode switch, Field Vector/Line toggles, and a "Load Dipole Field Preset" button
+  - `processEvents()`: window close/resize, pan (`RMB` drag)/zoom (wheel, scaled by scroll magnitude)/reset view (`MMB`), `Esc` opens Settings, `P` pauses independently, left-click position is converted pixels->meters; Move hit-tests via `World::findEntityAt` and grabs (`beginGrab`) - dragging a `Wire` translates both endpoints by the frame's mouse delta rather than snapping a point to the cursor; Select hit-tests and sets the persistent selection (`selectAt`); `PlaceCurrentWire` begins/finishes a drag (`Tools::beginWireDrag`/`finishWireDrag`) since a wire needs two points; everything else routes to `Tools::onClick`. `m_mouseWorldMeters` is tracked continuously for the Field Probe readout
+  - `drawToolsPanel()`/`drawToolSettingsPanel()`: always-visible, fixed top-left panels; Tool Settings shows per-tool controls (charge/particle magnitude with a quick "e" elementary-charge button, particle mass with "e-"/"p+" electron/proton buttons, Gaussian radius, wire current, Field Probe's live E/B readout, Move/Erase/Select hints)
+  - `drawPropertiesPanel()`: draws once `m_selectedKind != EntityKind::None` and the entity still exists (re-checked by id each frame, so it self-clears if the selection was erased) - editable fields per entity kind (Charge, GaussianSurface, Particle, Wire), each with the same quick-select buttons as Tool Settings where relevant
+  - `drawSettingsPanel()`: `Esc`-toggled modal with the Fields/Circuits mode switch, field/equipotential/magnetic-field overlay toggles, uniform B field controls, a `permeabilityFactor` slider with a "1x" reset button, preset buttons, and "Reset Simulation"
 
 #### `Mode.hpp`
 - **What it does**: `enum class Mode { Fields, Circuits }` - the top-level mode switch. See "Architecture" in [PLAN.md](PLAN.md) for why Fields and Circuits are split rather than one unified scene.
 
 #### `World.hpp / World.cpp`
 - **What it does**: Container for the Fields-mode scene
-- **Holds**: `PointCharge`s, `CurrentWire`s, `ChargedParticle`s, `MovingLoop`s, `GaussianSurface`s, one `UniformBField` - all on one spatial canvas so electrostatics/magnetism/induction entities can interact (e.g. a charged particle feels both `E` from charges and `v x B` from the field)
-- **Key methods**: `reset()`, `update(dt)` (currently only advances sim time; force/motion integration is `TODO(Phase 2/3/4)`); `allocateEntityId()` gives each placed charge/surface a stable id (see `PointCharge`/`GaussianSurface`); `findEntityAt(pos)`/`removeEntity(kind, id)`/`findCharge(id)`/`findGaussianSurface(id)` are the shared hit-test/lookup used by the Move/Select/Erase tools and the Properties panel, keyed by id (not vector index) so a selection/grab stays valid across insertions/erasures elsewhere in the scene
+- **Holds**: `PointCharge`s, `CurrentWire`s, `ChargedParticle`s, `MovingLoop`s, `GaussianSurface`s, one `UniformBField`, and a user-adjustable `permeabilityFactor` (not reset by `reset()` - a physics-realism setting, not scene content)
+- **Key methods**: `reset()`; `update(dt)` integrates each `ChargedParticle` via `engine/Solver`, re-sampling `electricFieldAt`/`magneticFieldAt` at each RK stage's position (loop flux/EMF is still `TODO(Phase 4)`); `allocateEntityId()` gives each placed entity a stable id; `findEntityAt(pos)`/`removeEntity(kind, id)`/`findCharge(id)`/`findGaussianSurface(id)`/`findParticle(id)`/`findWire(id)` are the shared hit-test/lookup used by Move/Select/Erase and the Properties panel, keyed by id (not vector index)
+- **Global field query**: `electricFieldAt`/`electricPotentialAt`/`magneticFieldAt(point, excludeParticleId)` are the single source of truth for field values - E combines static charges and moving particles (which are E sources too); B combines the uniform field, wires, and moving particles (which generate their own field via `FieldMath::movingChargeField`). `excludeParticleId` skips a particle's own self-field when computing the force acting on it. Particle integration, the Field Probe, and visualization (`allChargeSources()`, which also expresses particles as `PointCharge`s) all route through these instead of duplicating the sums
 
 #### `Tools.hpp / Tools.cpp`
 - **What it does**: User interaction tools
 - **`ToolType` enum**: Fields-mode tools (place charge/wire/particle/loop, draw Gaussian surface, field probe) and Circuits-mode tools (place resistor/capacitor/battery/switch/wire, ammeter/voltmeter), plus shared `Select`/`Move`/`Erase` (camera pan is unconditional via right-mouse-drag, not a tool)
-- **Key methods**: `onClick(worldPos, World&)` places a `PointCharge` (`PlacePositiveCharge`/`PlaceNegativeCharge`) or `GaussianSurface` (`DrawGaussianSurface`) at the tool's adjustable `chargeMagnitude()`/`gaussianRadius()`, or erases whatever `World::findEntityAt` hits (`Erase`). Move and Select are handled in `App` instead (they need press/drag/release and persistent state, not a single click). The `CircuitGraph&` overload is still `TODO(Phase 5)`.
+- **Key methods**: `onClick(worldPos, World&)` places a `PointCharge`, `ChargedParticle`, or `GaussianSurface` at the tool's adjustable settings, or erases whatever `World::findEntityAt` hits. `beginWireDrag`/`finishWireDrag` place a `CurrentWire` from a press-drag-release gesture instead (a wire needs two points, so it doesn't go through `onClick`); switching tools mid-drag abandons it. Move and Select are handled in `App` instead (they need persistent state across frames). The `CircuitGraph&` overload is still `TODO(Phase 5)`.
 
 #### `UI.hpp`
-- **What it does**: View/window helpers (pan, zoom, resize, letterboxing) - `handleResize`/`handleZoom`/`handlePanMouse`/`calculateLetterboxViewport`/`clampViewToWorld`, all implemented. Pan/zoom is clamped to the `DEF_WIDTH`/`DEF_HEIGHT` canvas (a Phase 1 default, easy to widen later if Fields mode needs a larger pannable area)
+- **What it does**: View/window helpers (pan, zoom, resize, letterboxing) - `handleResize`/`handleZoom`/`handlePanMouse`/`calculateLetterboxViewport`/`clampViewToWorld`, all implemented. Pan/zoom is clamped to `MAX_VIEW_WIDTH`/`MAX_VIEW_HEIGHT` (well beyond the initial `DEF_WIDTH`/`DEF_HEIGHT` view, since Fields mode has no walls to bound the camera against). `handleZoom`'s per-event step scales with the scroll delta's own magnitude, not just its sign, so a fast scroll zooms proportionally more than a slow one
 
 ---
 
 ### `src/engine/` - Shared Physics Math
 
 #### `Solver.hpp / Solver.cpp`
-- **What it does**: The project's single shared ODE solver (DOPRI5-style, fixed-step), reused across every domain instead of offering multiple interchangeable integrators
-- **Used by** (once implemented): charged-particle motion, RC/RL circuit transients, the rotating-loop generator
-- **Status**: `step()` currently returns the input state unchanged - `TODO(Phase 1)`
+- **What it does**: The project's single shared ODE solver (Dormand-Prince/DOPRI5, fixed-step), reused across every domain instead of offering multiple interchangeable integrators
+- **Used by**: `World::update` for `ChargedParticle` motion; RC/RL circuit transients and the rotating-loop generator once implemented
+- **Status**: `step()` takes the 5th-order solution each fixed step (skipping the embedded 4th-order estimate and its extra stage, since there's no adaptive step-size control)
 
 #### `FieldMath.hpp / FieldMath.cpp`
 - **What it does**: Shared force/field formulas so electrostatics/magnetism/induction stay thin data classes
-- **Functions**: `coulombField`/`coulombPotential` (implemented - superposition over all charges, with a clamped minimum separation to avoid a singularity directly on a charge), `coulombForceMagnitude` (implemented); `biotSavartField`, `forceBetweenWires`, `lorentzForce` (signatures fixed, bodies `TODO(Phase 3)`)
+- **Functions**: `pointChargeField`/`pointChargePotential` (single-source E field/potential - the building block `coulombField`/`coulombPotential` sum over a `PointCharge` list, and that `World` also calls directly for particles), `coulombForceMagnitude`; `biotSavartField` (finite-wire closed form, takes `permeabilityFactor`), `forceBetweenWires`, `movingChargeField` (a moving point charge's own generated field - same signed-scalar convention as `biotSavartField`, also takes `permeabilityFactor`), `lorentzForce`
 
 ---
 
@@ -90,11 +91,10 @@ You can use AI for such updates, but all text should be human-reviewed.
 - Position + signed charge magnitude (Coulombs). Trivial value type, fully implemented.
 
 #### `FieldSampler.hpp / FieldSampler.cpp`
-- `fieldAt`/`potentialAt`: thin wrappers over `FieldMath`, for grid sampling (vector arrows) and the Field Probe's cursor readout
-- `traceFieldLine(seed, charges, followField)`: marches along (or, if `followField` is false, against) the local E direction from `seed` until it nears a charge, escapes the domain, or hits the step cap (`FIELD_LINE_STEP`/`FIELD_LINE_MAX_STEPS`/`FIELD_LINE_CAPTURE_RADIUS`/`FIELD_LINE_MAX_RADIUS`). `Renderer` seeds a ring around each charge and follows the field outward from positive charges, inward for negative ones.
+- `traceFieldLine(seed, charges, followField)`: marches along (or, if `followField` is false, against) the local E direction from `seed` until it nears a charge, escapes the domain, or hits the step cap (`FIELD_LINE_STEP`/`FIELD_LINE_MAX_STEPS`/`FIELD_LINE_CAPTURE_RADIUS`/`FIELD_LINE_MAX_RADIUS`). `Renderer` seeds a ring around each charge source and follows the field outward from positive charges, inward for negative ones. (The cursor/grid field-value readouts now go through `World::electricFieldAt`/`electricPotentialAt` instead of a separate wrapper.)
 
 #### `EquipotentialTracer.hpp / EquipotentialTracer.cpp`
-- `traceContours(charges, potentialValues)`: standard 16-case marching-squares contour extraction over a potential grid padded around the charges (`EQUIPOTENTIAL_GRID_STEP` resolution). Takes every requested level at once (rather than one call per level) so each cell's corner potentials are sampled once and reused across levels. Returns unmerged per-cell segments rather than globally-stitched polylines - simpler, and visually indistinguishable once drawn together.
+- `traceContours(charges, potentialValues, viewMin, viewMax)`: standard 16-case marching-squares contour extraction over a potential grid padded around the charges (`EQUIPOTENTIAL_GRID_STEP` resolution), clamped to `viewMin`/`viewMax` - without the clamp, charges that are moving particles could drift apart and grow the grid (and its cost) unboundedly off-screen. Takes every requested level at once so each cell's corner potentials are sampled once and reused across levels. Returns unmerged per-cell segments rather than globally-stitched polylines - simpler, and visually indistinguishable once drawn together.
 
 #### `GaussianSurface.hpp / GaussianSurface.cpp`
 - User-drawn circle; `enclosedCharge` sums charge magnitudes within `radius` of `center`, `flux` divides by `VACUUM_PERMITTIVITY` per Gauss's law. Both implemented.
@@ -104,13 +104,13 @@ You can use AI for such updates, but all text should be human-reviewed.
 ### `src/magnetism/` - Magnetism
 
 #### `UniformBField.hpp`
-- Signed strength (Tesla; positive = out of page) + enabled flag. Fully implemented (trivial state holder).
+- Signed strength (Tesla; positive = out of page) + enabled flag. Trivial state holder.
 
 #### `CurrentWire.hpp`
-- Start/end position + signed current (Amperes). Fully implemented (trivial state holder).
+- Start/end position + signed current (Amperes) + stable `id`. Trivial state holder; the field/force math lives in `engine/FieldMath`.
 
 #### `ChargedParticle.hpp`
-- Position, velocity, charge, mass, plus a trajectory trace (`std::deque<Vec2>`) for path visualization. Fully implemented as a state holder; motion integration is `World`'s job (`TODO(Phase 3)`).
+- Position, velocity, charge, mass, a trajectory trace (`std::deque<Vec2>`), and a stable `id`. Trivial state holder; motion integration is `World::update`'s job.
 
 ---
 
@@ -153,8 +153,8 @@ You can use AI for such updates, but all text should be human-reviewed.
 
 #### `Renderer.hpp / Renderer.cpp`
 - **What it does**: Draws the grid, then mode-dependent content
-- **Toggle flags**: `showFieldVectors`, `showFieldLines`, `showEquipotentials`, `showCurrentFlowAnimation`
-- **Key methods**: `drawGridlines()` (implemented); `drawWorld()` draws, in back-to-front order: equipotential contours, field lines, field vectors (arrows, length compressed toward `FIELD_VECTOR_MAX_LENGTH` so they don't blow up near a charge), Gaussian surfaces (with an ImGui-overlay `Q_enc` label), then charges on top. `drawCircuit()` (schematic + live V/I/R/Q labels + current-flow animation) is still `TODO(Phase 5)`.
+- **Toggle flags**: `showFieldVectors`, `showFieldLines`, `showEquipotentials`, `showMagneticField`, `showCurrentFlowAnimation`
+- **Key methods**: `drawGridlines()`; `drawWorld()` draws, in back-to-front order: equipotential contours, field lines, field vectors (arrows, length compressed toward `FIELD_VECTOR_MAX_LENGTH`), magnetic field markers (`drawMagneticField` - dots for out-of-page, crosses for into-page, sampled via `World::magneticFieldAt` so uniform field/wires/particles all show up together), Gaussian surfaces, wires (with a current-direction arrow and an in-progress `wirePreview` while dragging), wire-pair force readouts (`drawWireForceReadouts`, only for roughly-parallel pairs), particles (with trajectory trace), then charges on top. `drawCircuit()` (schematic + live V/I/R/Q labels + current-flow animation) is still `TODO(Phase 5)`.
 
 ---
 
@@ -178,11 +178,11 @@ You can use AI for such updates, but all text should be human-reviewed.
 ### `src/scenes/` - Preloaded Test Scenes
 
 #### `Presets.hpp / Presets.cpp`
-- One function per preset: `loadDipoleField` (implemented - a +/- charge pair 2 meters apart, wired to a button in the Settings modal), `loadParallelPlateCapacitor`, `loadSimpleRCCircuit`, `loadParticleInUniformB` - the rest `TODO`, implemented alongside the phase that needs them (see PLAN.md)
+- One function per preset, each placed relative to the view's center (not meters-space origin) so it lands in the visible viewport: `loadDipoleField` (a +/- charge pair 2 meters apart), `loadParticleInUniformB` (one charged particle in an enabled uniform field), both wired to Settings-modal buttons. `loadParallelPlateCapacitor`/`loadSimpleRCCircuit` are still `TODO(Phase 5)`.
 
 ---
 
-## How the Simulation Will Work (planned - see PLAN.md for phasing)
+## How the Simulation Works (Fields mode; Circuits mode is still planned - see PLAN.md)
 
 ### Initialization Phase (main.cpp -> App)
 1. `chdirToExecutableDirectory()` so relative asset paths resolve correctly
@@ -199,25 +199,27 @@ repeat each frame:
   4. display frame
 ```
 
-### Physics Update (planned)
+### Physics Update
 ```
 Fields mode (World::update):
-  for each ChargedParticle: F = qE (from all PointCharges) + qv x B (from UniformBField)
+  for each ChargedParticle: F = qE + qv x B, both fields sampled at each RK stage's
+                            position via electricFieldAt/magneticFieldAt (which combine
+                            every source, excluding the particle's own self-field)
                             -> integrate via engine/Solver
-  for each MovingLoop: flux = B . A * cos(theta) -> inducedEMF = -d(flux)/dt
+  for each MovingLoop: flux = B . A * cos(theta) -> inducedEMF = -d(flux)/dt (TODO Phase 4)
 
-Circuits mode (CircuitGraph::update):
+Circuits mode (CircuitGraph::update, TODO Phase 5):
   solve() - modified nodal analysis over all Components for this instant's node voltages
   integrate Capacitor charge / Inductor current via engine/Solver for the next dt
 ```
-See [SCIENCE.md](SCIENCE.md) for the full physics/math this will implement.
+See [SCIENCE.md](SCIENCE.md) for the full physics/math.
 
 ### Coordinate System
 - `PIXELS_PER_METER` conversion, grid lines at `GRID_MINOR_SPACING`/`GRID_MAJOR_SPACING` meters
 
 ---
 
-## Data Flow Diagram (planned)
+## Data Flow Diagram
 
 ```
 User Input (Mouse, Keyboard)
@@ -243,7 +245,7 @@ User sees updated simulation
 
 ## How to Read the Code
 
-### For Understanding the Planned Physics
+### For Understanding the Physics
 1. Start: [SCIENCE.md](SCIENCE.md) - Coulomb/Gauss/Lorentz/Biot-Savart/Faraday/MNA notes
 2. Then: `src/engine/FieldMath.hpp` - shared force/field function signatures
 3. Then: the relevant domain folder (`electrostatics/`, `magnetism/`, `induction/`, `circuits/`) for the entity types that use them
@@ -251,7 +253,7 @@ User sees updated simulation
 ### For Understanding the App Shell
 1. Start: `src/main.cpp` - trivial entry point
 2. Then: `src/core/App.hpp` - members show what the app owns per mode
-3. Then: [PLAN.md](PLAN.md)'s Phase 1 section - what `App`'s stub methods will become
+3. Then: [PLAN.md](PLAN.md) - the phased build order and remaining work
 
 ### For Adding Features
 - New Fields-mode entity type: add to the relevant domain folder, add a container in `World`, add a `ToolType` + `Tools::onClick` case, add rendering in `Renderer::drawWorld`
@@ -272,7 +274,7 @@ User sees updated simulation
   - fmt (formatted output) - git submodule
   - matplot++ (graphing via gnuplot) - git submodule
 - **Build command**: `cmake -B build && cmake --build build` (requires `git submodule update --init --recursive` first if cloned without `--recurse-submodules`)
-- **Current status**: builds and links a working app shell (Phase 1) with electrostatics (Phase 2) implemented; magnetism/induction/circuits remain stub sources (see PLAN.md)
+- **Current status**: builds and links a working app shell, electrostatics, and magnetism (Phases 1-3); induction/circuits remain stub sources (see PLAN.md)
 
 ---
 
@@ -297,6 +299,6 @@ User sees updated simulation
 
 ## Notes
 
-- This document reflects the initial **scaffold** commit - update it as each phase in [PLAN.md](PLAN.md) lands.
+- Update this document as each phase in [PLAN.md](PLAN.md) lands.
 - Fields mode and Circuits mode intentionally do not share a scene container: Fields entities live in continuous 2D space and superpose physically, while Circuits entities are graph/topology-based (node indices, not positions) and are solved algebraically (MNA) rather than by force integration alone.
-- Trivial value-holder classes (charges, wires, particles, loops, circuit components) got real constructors immediately since they involve no design decisions; anything requiring an actual physics/numerics decision was left as a `TODO(Phase N)` stub instead of guessed at.
+- Loops and circuit components are still trivial value-holders with the physics left as a `TODO(Phase N)` stub; charges, wires, and particles now have their physics/numerics fully implemented in `engine/FieldMath` and `World`.

@@ -4,7 +4,7 @@ Grapher::Grapher() = default;
 
 void Grapher::plot(const Logger &logger, const std::vector<std::string> &quantityNames)
 {
-    // TODO(Phase 6): render selected quantities via matplot++, like NN's Grapher
+    // TODO(Phase 6): render selected quantities via matplot++
     (void)logger;
     (void)quantityNames;
 }

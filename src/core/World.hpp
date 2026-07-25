@@ -14,7 +14,9 @@ enum class EntityKind
 {
     None,
     Charge,
-    GaussianSurface
+    GaussianSurface,
+    Particle,
+    Wire
 };
 
 struct EntityRef
@@ -56,6 +58,23 @@ public:
     void removeEntity(EntityKind kind, int id);
     PointCharge *findCharge(int id);
     GaussianSurface *findGaussianSurface(int id);
+    ChargedParticle *findParticle(int id);
+    CurrentWire *findWire(int id);
+
+    // The single global field: every source at once (charges+particles for E; uniform
+    // field+wires+particles for B). excludeParticleId skips that particle's own self-field.
+    Vec2 electricFieldAt(const Vec2 &point, int excludeParticleId = -1) const;
+    float electricPotentialAt(const Vec2 &point, int excludeParticleId = -1) const;
+    float magneticFieldAt(const Vec2 &point, int excludeParticleId = -1) const;
+
+    // Every charge source expressed as a PointCharge (static charges plus particles), for
+    // field-line/equipotential visualization, which only needs position+charge.
+    std::vector<PointCharge> allChargeSources() const;
+
+    // User-adjustable multiplier on mu_0 (see Config.hpp) - not reset by reset(), since
+    // it's a physics-realism setting rather than scene content.
+    float permeabilityFactor() const;
+    void setPermeabilityFactor(float factor);
 
 private:
     std::vector<PointCharge> m_charges;
@@ -68,4 +87,5 @@ private:
 
     float m_simTime;
     int m_nextEntityId;
+    float m_permeabilityFactor;
 };

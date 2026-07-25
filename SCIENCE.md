@@ -86,6 +86,20 @@ $$
 \vec F = I\vec L \times \vec B
 $$
 
+**A moving point charge also generates a field** (point-charge Biot-Savart):
+
+$$
+\vec B = \frac{\mu_0}{4\pi}\frac{q\vec v \times \hat r}{r^2}
+$$
+
+so charged particles feel and exert magnetic forces on each other, not just on/from wires.
+
+**Playground scale**: at the real $\mu_0 \approx 1.26\times10^{-6}$, a wire's or particle's
+own generated field is negligible next to electrostatics' charge scale. `permeabilityFactor`
+(Settings panel, default $10^6$, "1x" button for real physics) multiplies $\mu_0$ in both
+formulas above so these effects are visible - mirroring how electrostatics already pairs the
+real Coulomb's constant with an unrealistically large charge magnitude for the same reason.
+
 ## Induction
 
 **Faraday's law**: the EMF induced in a loop equals the negative rate of change of

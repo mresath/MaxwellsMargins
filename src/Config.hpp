@@ -6,6 +6,10 @@
 #define DEF_HEIGHT 800.f
 #define BACKGROUND_COLOR sf::Color(30, 30, 30, 255)
 
+// Fields mode has no ground/walls, so the camera can zoom/pan well past the initial view.
+#define MAX_VIEW_WIDTH (DEF_WIDTH * 8.0f)
+#define MAX_VIEW_HEIGHT (DEF_HEIGHT * 8.0f)
+
 // GRID CONFIGURATION
 #define GRID_MAJOR_SPACING 5.0f
 #define GRID_MINOR_SPACING 1.0f
@@ -31,8 +35,9 @@
 
 // ELECTROSTATICS CONFIGURATION
 #define COULOMB_CONSTANT 8.9875517923e9f // N*m^2/C^2 (k)
-#define MIN_CHARGE_MAGNITUDE 1e-9f       // C
-#define MAX_CHARGE_MAGNITUDE 1e-6f       // C
+#define ELEMENTARY_CHARGE 1.602176634e-19f // C (e), selectable via the "e" button next to charge fields
+#define MIN_CHARGE_MAGNITUDE ELEMENTARY_CHARGE
+#define MAX_CHARGE_MAGNITUDE 1e-6f // C
 #define DEFAULT_CHARGE_MAGNITUDE 1e-7f   // C
 #define POSITIVE_CHARGE_COLOR sf::Color(220, 60, 60, 255)
 #define NEGATIVE_CHARGE_COLOR sf::Color(60, 100, 220, 255)
@@ -50,7 +55,7 @@
 #define MAX_GAUSSIAN_SURFACE_RADIUS 6.0f     // meters
 #define GAUSSIAN_SURFACE_RADIUS_STEP 0.1f    // meters, Tool Settings drag-slider step
 
-#define ENTITY_HIT_RADIUS 0.25f // meters, click/hit-test tolerance for Move/Select/Erase on a charge
+#define ENTITY_HIT_RADIUS 0.25f // meters, click/hit-test tolerance for Move/Select/Erase
 
 #define FIELD_VECTOR_SPACING 1.0f       // meters between sampled field-vector arrows
 #define FIELD_VECTOR_MAX_LENGTH 0.4f    // meters, cap on drawn arrow length regardless of field magnitude
@@ -66,6 +71,15 @@
 #define EQUIPOTENTIAL_GRID_STEP 0.2f // meters, marching-squares sampling resolution
 
 // MAGNETISM CONFIGURATION
+#define VACUUM_PERMEABILITY 1.25663706212e-6f // T*m/A (mu_0)
+
+// User-adjustable multiplier on mu_0 (Settings panel, "1x" button resets to real physics).
+// MAX is capped so a particle grazing a wire can't exceed the fixed-step cyclotron stability limit.
+#define MIN_PERMEABILITY_FACTOR 1.0f
+#define MAX_PERMEABILITY_FACTOR 3.0e6f
+#define DEFAULT_PERMEABILITY_FACTOR 1.0e6f
+#define PERMEABILITY_FACTOR_STEP 1000.0f
+
 #define MIN_B_FIELD_STRENGTH -5.0f // T
 #define MAX_B_FIELD_STRENGTH 5.0f  // T
 #define DEFAULT_B_FIELD_STRENGTH 1.0f
@@ -73,6 +87,42 @@
 #define B_FIELD_INTO_PAGE_COLOR sf::Color(255, 140, 80, 255)
 #define CURRENT_WIRE_COLOR sf::Color(230, 230, 230, 255)
 #define TRAJECTORY_TRACE_COLOR sf::Color(100, 150, 255, 255)
+
+#define B_FIELD_MARKER_SPACING 1.0f        // meters between sampled into/out-of-page markers
+#define B_FIELD_MARKER_MIN_MAGNITUDE 0.02f // T, below this the field is too weak to draw
+#define B_FIELD_MARKER_SATURATION 2.0f     // T, half-saturation point for marker size scaling
+#define B_FIELD_MARKER_MAX_RADIUS 0.12f    // meters, cap on drawn marker size regardless of field strength
+
+// Bigger than MIN/MAX/DEFAULT_CHARGE_MAGNITUDE for a visible self-generated B field; paired
+// with DEFAULT_PARTICLE_MASS to preserve the charge/mass ratio that sets cyclotron frequency.
+#define MIN_PARTICLE_CHARGE_MAGNITUDE ELEMENTARY_CHARGE
+#define MAX_PARTICLE_CHARGE_MAGNITUDE 1.0f     // C
+#define DEFAULT_PARTICLE_CHARGE_MAGNITUDE 0.1f // C
+#define PARTICLE_CHARGE_MAGNITUDE_STEP 0.001f  // C, Tool Settings drag-slider step
+
+#define ELECTRON_MASS 9.1093837015e-31f // kg, selectable via the "e-" button next to mass fields
+#define PROTON_MASS 1.67262192369e-27f  // kg, selectable via the "p+" button next to mass fields
+
+#define MIN_PARTICLE_MASS ELECTRON_MASS
+#define MAX_PARTICLE_MASS 1.0f    // kg
+#define DEFAULT_PARTICLE_MASS 0.1f // kg
+#define PARTICLE_MASS_STEP 0.01f  // kg, Tool Settings drag-slider step
+
+#define MIN_PARTICLE_SPEED 0.0f     // m/s
+#define MAX_PARTICLE_SPEED 20.0f    // m/s
+#define DEFAULT_PARTICLE_SPEED 5.0f // m/s
+#define PARTICLE_SPEED_STEP 0.1f    // m/s, Tool Settings drag-slider step
+
+#define PARTICLE_RADIUS 0.12f            // meters, drawn circle radius for a placed particle
+#define TRAJECTORY_TRACE_MAX_POINTS 600u // cap on stored trajectory points before the oldest is dropped
+
+#define MIN_WIRE_CURRENT -20.0f     // A
+#define MAX_WIRE_CURRENT 20.0f      // A
+#define DEFAULT_WIRE_CURRENT 5.0f   // A
+#define WIRE_CURRENT_STEP 0.1f      // A, Tool Settings drag-slider step
+#define MIN_WIRE_LENGTH 0.1f       // meters, shorter click-drags are discarded as accidental clicks
+
+#define WIRE_PARALLEL_DOT_THRESHOLD 0.98f // |dot of unit directions| above this counts as "parallel" for the force readout
 
 // INDUCTION CONFIGURATION
 #define LOOP_COLOR sf::Color(230, 230, 230, 255)
