@@ -15,9 +15,12 @@ Vec2 interpolate(const Vec2 &a, float va, const Vec2 &b, float vb, float value)
 }
 
 // Standard marching-squares table: corners bottom-left/right/top-right/top-left, edges
-// e0..e3 bottom/right/top/left. Cases 5 and 10 are the ambiguous saddles (two segments).
+// e0..e3 bottom/right/top/left. Cases 5 and 10 are the ambiguous saddles (diagonal corners
+// on the same side): which of the two valid segment pairings is correct depends on whether
+// the cell's actual center value sits with the high or low corners - a fixed choice here
+// misdraws contours near any real saddle (e.g. directly between two like charges).
 void addCaseSegments(int caseIndex, const Vec2 &e0, const Vec2 &e1, const Vec2 &e2, const Vec2 &e3,
-                      std::vector<std::vector<Vec2>> &segments)
+                      bool centerAboveLevel, std::vector<std::vector<Vec2>> &segments)
 {
     switch (caseIndex)
     {
@@ -46,12 +49,28 @@ void addCaseSegments(int caseIndex, const Vec2 &e0, const Vec2 &e1, const Vec2 &
         segments.push_back({e2, e3});
         break;
     case 5:
-        segments.push_back({e3, e0});
-        segments.push_back({e1, e2});
+        if (centerAboveLevel)
+        {
+            segments.push_back({e0, e1});
+            segments.push_back({e2, e3});
+        }
+        else
+        {
+            segments.push_back({e3, e0});
+            segments.push_back({e1, e2});
+        }
         break;
     case 10:
-        segments.push_back({e0, e1});
-        segments.push_back({e2, e3});
+        if (centerAboveLevel)
+        {
+            segments.push_back({e3, e0});
+            segments.push_back({e1, e2});
+        }
+        else
+        {
+            segments.push_back({e0, e1});
+            segments.push_back({e2, e3});
+        }
         break;
     default:
         break;
@@ -65,21 +84,11 @@ std::vector<std::vector<Vec2>> EquipotentialTracer::traceContours(const std::vec
     if (charges.empty() || potentialValues.empty())
         return {};
 
-    float minX = charges[0].position.x, maxX = minX;
-    float minY = charges[0].position.y, maxY = minY;
-    for (const auto &charge : charges)
-    {
-        minX = std::min(minX, charge.position.x);
-        maxX = std::max(maxX, charge.position.x);
-        minY = std::min(minY, charge.position.y);
-        maxY = std::max(maxY, charge.position.y);
-    }
-
-    constexpr float kPadding = 4.0f; // meters
-    minX = std::max(minX - kPadding, viewMin.x);
-    maxX = std::min(maxX + kPadding, viewMax.x);
-    minY = std::max(minY - kPadding, viewMin.y);
-    maxY = std::min(maxY + kPadding, viewMax.y);
+    // The grid always spans the full viewport - not just a padded box around the charges -
+    // so a contour is never truncated before it reaches the screen edge; the viewport bound
+    // alone already keeps the grid finite even if charges drift far apart.
+    const float minX = viewMin.x, maxX = viewMax.x;
+    const float minY = viewMin.y, maxY = viewMax.y;
     if (minX >= maxX || minY >= maxY)
         return {};
 
@@ -102,6 +111,8 @@ std::vector<std::vector<Vec2>> EquipotentialTracer::traceContours(const std::vec
             const float v1 = FieldMath::coulombPotential(p1, charges);
             const float v2 = FieldMath::coulombPotential(p2, charges);
             const float v3 = FieldMath::coulombPotential(p3, charges);
+            const Vec2 center((p0.x + p2.x) * 0.5f, (p0.y + p2.y) * 0.5f);
+            const float vCenter = FieldMath::coulombPotential(center, charges);
 
             for (float level : potentialValues)
             {
@@ -123,7 +134,7 @@ std::vector<std::vector<Vec2>> EquipotentialTracer::traceContours(const std::vec
                 const Vec2 e2 = interpolate(p2, v2, p3, v3, level);
                 const Vec2 e3 = interpolate(p3, v3, p0, v0, level);
 
-                addCaseSegments(caseIndex, e0, e1, e2, e3, segments);
+                addCaseSegments(caseIndex, e0, e1, e2, e3, vCenter > level, segments);
             }
         }
     }
