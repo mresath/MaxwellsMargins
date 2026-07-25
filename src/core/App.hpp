@@ -11,10 +11,11 @@
 #include "core/World.hpp"
 #include "graphing/Grapher.hpp"
 #include "logging/Logger.hpp"
+#include "math/Vec2.hpp"
 #include "render/Renderer.hpp"
 
 // Owns the window and main loop; switches between Fields and Circuits mode, each with its
-// own scene, tools, and panel content. Mirrors Schrodinger's Sketchbook's App shell.
+// own scene, tools, and panel content.
 class App
 {
 public:
@@ -26,16 +27,17 @@ private:
     void update(float frameTime);
     void draw();
 
-    // Stats and Tools are always visible and immovable, position recomputed every frame
-    // (not left to ImGui's ini-persisted layout). Tool Settings sits right beside Tools
-    // at the same top Y, also recomputed every frame. Properties only draws when
-    // something is selected (nothing is selectable yet - Phase 2+). Settings is an
-    // Esc-toggled modal.
+    // Stats/Tools/Tool Settings are fixed-position and recomputed every frame (not
+    // ImGui-ini-persisted). Properties only draws once something is selectable. Settings
+    // is an Esc-toggled modal.
     void drawStatsPanel();
     float drawToolsPanel();
     void drawToolSettingsPanel(float toolsPanelWidth);
     void drawPropertiesPanel();
     void drawSettingsPanel();
+
+    void beginGrab(const Vec2 &pos);
+    void selectAt(const Vec2 &pos);
 
     sf::RenderWindow m_window;
     sf::View m_view;
@@ -49,16 +51,19 @@ private:
     Logger m_logger;
     Grapher m_grapher;
 
-    // Tool icon textures, keyed by name (e.g. "cursor", "hand"). Only tools with a
-    // directly-applicable icon get one; everything else renders as a plain square
-    // placeholder until real per-tool icons are designed (see PLAN.md).
     std::map<std::string, sf::Texture> m_toolTextures;
 
     float m_accumulatedZoom;
     sf::Vector2f m_lastMousePos;
+    Vec2 m_mouseWorldMeters; // continuously updated cursor position in world meters, for FieldProbe
     bool m_isPanning;
     bool m_paused;
     bool m_settingsOpen;
+
+    EntityKind m_grabbedKind;
+    int m_grabbedId;
+    EntityKind m_selectedKind;
+    int m_selectedId;
 
     float m_accumulator;
     float m_lastFrameTime;

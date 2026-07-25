@@ -1,15 +1,19 @@
 #include "electrostatics/GaussianSurface.hpp"
 
-// TODO(Phase 2): implement (sum charge magnitudes within `radius` of `center`; flux from Gauss's law)
+#include "Config.hpp"
 
 float GaussianSurface::enclosedCharge(const std::vector<PointCharge> &charges) const
 {
-    (void)charges;
-    return 0.0f;
+    float total = 0.0f;
+    for (const auto &charge : charges)
+    {
+        if ((charge.position - center).length() <= radius)
+            total += charge.charge;
+    }
+    return total;
 }
 
 float GaussianSurface::flux(const std::vector<PointCharge> &charges) const
 {
-    (void)charges;
-    return 0.0f;
+    return enclosedCharge(charges) / VACUUM_PERMITTIVITY;
 }

@@ -5,12 +5,12 @@
 #include "electrostatics/PointCharge.hpp"
 #include "math/Vec2.hpp"
 
-// Traces closed equipotential contours (marching-squares style) around a set of charges
-// for a given potential value.
 class EquipotentialTracer
 {
 public:
-    std::vector<std::vector<Vec2>> traceContours(const std::vector<PointCharge> &charges, float potentialValue) const;
-
-    // TODO(Phase 2): implement contour extraction
+    // Marching squares over a grid padded around the charges. Takes every level in one call
+    // (rather than one call per level) so each cell's corner potentials are sampled once and
+    // reused across levels. Returns unmerged per-cell segments, not stitched polylines - fine
+    // since every segment for a level is drawn together anyway.
+    std::vector<std::vector<Vec2>> traceContours(const std::vector<PointCharge> &charges, const std::vector<float> &potentialValues) const;
 };

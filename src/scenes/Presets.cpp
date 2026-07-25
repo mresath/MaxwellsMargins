@@ -1,15 +1,18 @@
 #include "scenes/Presets.hpp"
 
+#include "Config.hpp"
 #include "circuits/CircuitGraph.hpp"
 #include "core/World.hpp"
+#include "math/Vec2.hpp"
 
 namespace Presets
 {
 
 void loadDipoleField(World &world)
 {
-    // TODO(Phase 2): world.reset(); add a +/- charge pair
-    (void)world;
+    world.reset();
+    world.charges().emplace_back(Vec2(-1.0f, 0.0f), DEFAULT_CHARGE_MAGNITUDE, world.allocateEntityId());
+    world.charges().emplace_back(Vec2(1.0f, 0.0f), -DEFAULT_CHARGE_MAGNITUDE, world.allocateEntityId());
 }
 
 void loadParallelPlateCapacitor(CircuitGraph &circuit)

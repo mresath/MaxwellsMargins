@@ -4,24 +4,46 @@
 #include "electrostatics/PointCharge.hpp"
 #include "magnetism/CurrentWire.hpp"
 
-// TODO(Phase 2/3): implement. Signatures fixed now so electrostatics/magnetism/induction
-// modules can be written against a stable interface.
+// TODO(Phase 3): implement biotSavartField/forceBetweenWires/lorentzForce.
+
+namespace
+{
+// Clamped minimum separation avoids the field/potential blowing up to infinity directly
+// on top of a point charge - both physically singular and numerically useless to render.
+constexpr float kMinSeparation = 0.05f; // meters
+} // namespace
 
 namespace FieldMath
 {
 
 Vec2 coulombField(const Vec2 &point, const std::vector<PointCharge> &charges)
 {
-    (void)point;
-    (void)charges;
-    return Vec2(0.0f, 0.0f);
+    Vec2 total(0.0f, 0.0f);
+    for (const auto &charge : charges)
+    {
+        const Vec2 offset = point - charge.position;
+        float distance = offset.length();
+        if (distance < kMinSeparation)
+            distance = kMinSeparation;
+
+        const Vec2 direction = offset / distance;
+        total += direction * (COULOMB_CONSTANT * charge.charge / (distance * distance));
+    }
+    return total;
 }
 
 float coulombPotential(const Vec2 &point, const std::vector<PointCharge> &charges)
 {
-    (void)point;
-    (void)charges;
-    return 0.0f;
+    float total = 0.0f;
+    for (const auto &charge : charges)
+    {
+        float distance = (point - charge.position).length();
+        if (distance < kMinSeparation)
+            distance = kMinSeparation;
+
+        total += COULOMB_CONSTANT * charge.charge / distance;
+    }
+    return total;
 }
 
 float coulombForceMagnitude(float q1, float q2, float separation)

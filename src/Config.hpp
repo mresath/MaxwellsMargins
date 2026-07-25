@@ -41,6 +41,30 @@
 #define EQUIPOTENTIAL_LINE_COLOR sf::Color(120, 220, 160, 180)
 #define GAUSSIAN_SURFACE_COLOR sf::Color(180, 140, 255, 200)
 
+#define VACUUM_PERMITTIVITY 8.8541878128e-12f // F/m (epsilon_0), for Gauss's law flux
+#define POINT_CHARGE_RADIUS 0.15f             // meters, drawn circle radius for a placed charge
+#define CHARGE_MAGNITUDE_STEP 1e-8f            // Coulombs, Tool Settings drag-slider step
+
+#define GAUSSIAN_SURFACE_DEFAULT_RADIUS 2.0f // meters, radius of a newly-drawn Gaussian surface
+#define MIN_GAUSSIAN_SURFACE_RADIUS 0.5f     // meters
+#define MAX_GAUSSIAN_SURFACE_RADIUS 6.0f     // meters
+#define GAUSSIAN_SURFACE_RADIUS_STEP 0.1f    // meters, Tool Settings drag-slider step
+
+#define ENTITY_HIT_RADIUS 0.25f // meters, click/hit-test tolerance for Move/Select/Erase on a charge
+
+#define FIELD_VECTOR_SPACING 1.0f       // meters between sampled field-vector arrows
+#define FIELD_VECTOR_MAX_LENGTH 0.4f    // meters, cap on drawn arrow length regardless of field magnitude
+#define FIELD_VECTOR_MIN_MAGNITUDE 1.0f // N/C, below this the field is too weak to draw
+#define FIELD_VECTOR_SATURATION 60.0f   // N/C, half-saturation point for arrow length scaling
+
+#define FIELD_LINE_COUNT_PER_CHARGE 12 // field lines seeded around each charge
+#define FIELD_LINE_STEP 0.05f          // meters, integration step size for tracing
+#define FIELD_LINE_MAX_STEPS 400
+#define FIELD_LINE_CAPTURE_RADIUS 0.12f // meters, line terminates within this distance of a charge
+#define FIELD_LINE_MAX_RADIUS 30.0f     // meters from origin before a line is considered escaped
+
+#define EQUIPOTENTIAL_GRID_STEP 0.2f // meters, marching-squares sampling resolution
+
 // MAGNETISM CONFIGURATION
 #define MIN_B_FIELD_STRENGTH -5.0f // T
 #define MAX_B_FIELD_STRENGTH 5.0f  // T

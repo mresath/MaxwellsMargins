@@ -7,10 +7,9 @@
 class PointCharge
 {
 public:
-    PointCharge(Vec2 position, float charge) : position(position), charge(charge) {}
+    PointCharge(Vec2 position, float charge, int id) : position(position), charge(charge), id(id) {}
 
     Vec2 position;
     float charge; // Coulombs, signed
-
-    // TODO(Phase 2): electricFieldAt(point), potentialAt(point) using engine/FieldMath
+    int id;       // stable identity for selection/grab, independent of vector index
 };

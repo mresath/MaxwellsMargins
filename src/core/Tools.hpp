@@ -5,8 +5,7 @@
 class World;
 class CircuitGraph;
 
-// User-interaction tools available per mode. A click/drag is routed to the active
-// World or CircuitGraph depending on the current Mode (see core/Mode.hpp).
+// Routed to the active World or CircuitGraph depending on the current Mode.
 enum class ToolType
 {
     // Fields mode
@@ -27,9 +26,10 @@ enum class ToolType
     PlaceAmmeter,
     PlaceVoltmeter,
 
-    // Shared
+    // Shared (camera pan is unconditional via right-mouse-drag, not a tool - see core/App)
     Select,
-    Pan
+    Move,
+    Erase
 };
 
 class Tools
@@ -43,6 +43,14 @@ public:
     void onClick(const Vec2 &worldPos, World &world);
     void onClick(const Vec2 &worldPos, CircuitGraph &circuit);
 
+    // Applied to the next placed entity, not retroactive to already-placed ones.
+    float chargeMagnitude() const;
+    void setChargeMagnitude(float magnitude);
+    float gaussianRadius() const;
+    void setGaussianRadius(float radius);
+
 private:
     ToolType m_activeTool;
+    float m_chargeMagnitude;
+    float m_gaussianRadius;
 };

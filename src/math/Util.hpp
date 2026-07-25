@@ -4,9 +4,8 @@
 
 #include "math/Vec2.hpp"
 
-// Conversion functions between screen pixels and simulation meters. Unlike Newton's
-// Notepad, Fields mode has no ground/wall reference, so there is no position
-// standardization step here - world positions are meters relative to the view origin.
+// Conversion functions between screen pixels and simulation meters. Fields mode has no
+// ground/wall reference, so world positions are just meters relative to the view origin.
 
 /// Length
 inline float pixelsPerMeter = PIXELS_PER_METER; // Conversion factor between pixels and meters

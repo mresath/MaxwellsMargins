@@ -153,15 +153,15 @@ are scaffolded. No simulation logic is implemented yet. Vendor submodules
 
 ### Phase 2 - Electrostatics
 
-- [ ] `PointCharge` placement tool
-- [ ] `engine/FieldMath::coulombField`/`coulombPotential` (superposition)
-- [ ] Field vectors (arrows scaled to magnitude)
-- [ ] Continuous field lines (seeded traces from `FieldSampler`)
-- [ ] Potential readout at cursor
-- [ ] `EquipotentialTracer` + equipotential line rendering
-- [ ] `GaussianSurface` draw tool + enclosed-charge/flux readout
-- [ ] Preset: `scenes::loadDipoleField`
-- [ ] Acceptance: superposed field vectors/lines and equipotentials match Coulomb's law; Gauss tool reports correct enclosed charge
+- [x] `PointCharge` placement tool
+- [x] `engine/FieldMath::coulombField`/`coulombPotential` (superposition)
+- [x] Field vectors (arrows scaled to magnitude)
+- [x] Continuous field lines (seeded traces from `FieldSampler`)
+- [x] Potential readout at cursor (Field Probe tool, shown in the Tool Settings panel)
+- [x] `EquipotentialTracer` + equipotential line rendering
+- [x] `GaussianSurface` draw tool + enclosed-charge/flux readout
+- [x] Preset: `scenes::loadDipoleField` (wired to a button in the Settings modal)
+- [ ] Acceptance: superposed field vectors/lines and equipotentials match Coulomb's law; Gauss tool reports correct enclosed charge. Verified: builds cleanly and launches without crashing. Not yet verified: interactive click-through of charge/Gaussian-surface placement in the running app (GUI scripting was blocked by a macOS Accessibility permission prompt) - needs a manual pass.
 
 ### Phase 3 - Magnetism
 
@@ -201,4 +201,4 @@ are scaffolded. No simulation logic is implemented yet. Vendor submodules
 - [ ] `graphing/Grapher`: matplot++-based plotting, save-as-image
 - [ ] Unit display pass (SI units shown consistently: C, N/C, V, Ohm, F, T, H)
 - [ ] Toggle-able overlay consistency/QA pass (field vectors, field lines, equipotentials, current-flow animation)
-- [ ] App icon: generate `.icns`/`.ico` from `src/assets/logo/logo.png`, wire into `resources/mac`/`resources/windows`
+- [x] App icon: generate `.icns`/`.ico` from `src/assets/logo/logo.png`, wire into `resources/mac`/`resources/windows`

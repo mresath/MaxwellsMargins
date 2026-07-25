@@ -3,8 +3,7 @@
 class World;
 class CircuitGraph;
 
-// Preloaded test scenes, one function per preset, mirroring Newton's Notepad's
-// World::loadTestScene() pattern.
+// Preloaded test scenes, one function per preset.
 namespace Presets
 {
 void loadDipoleField(World &world);

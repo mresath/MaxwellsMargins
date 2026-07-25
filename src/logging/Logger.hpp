@@ -4,8 +4,7 @@
 #include <string>
 
 // Records simulation state (field strength, potential, current, voltage, charge, ...)
-// at each update for later graphing, and saves it on exit or on demand. Mirrors
-// Newton's Notepad's JSON logger.
+// at each update for later graphing, and saves it on exit or on demand.
 class Logger
 {
 public:
@@ -16,5 +15,5 @@ public:
     void save(const std::string &path) const;
 
 private:
-    // TODO(Phase 6): time -> {quantity name -> value} history, like NN's JSONLog
+    // TODO(Phase 6): time -> {quantity name -> value} history
 };

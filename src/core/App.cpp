@@ -2,12 +2,16 @@
 
 #include "Config.hpp"
 #include "core/UI.hpp"
+#include "electrostatics/FieldSampler.hpp"
+#include "math/Util.hpp"
 #include "math/Vec2.hpp"
+#include "scenes/Presets.hpp"
 
 #include <imgui-SFML.h>
 #include <imgui.h>
 
 #include <algorithm>
+#include <cmath>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -53,26 +57,34 @@ const char *toolName(ToolType tool)
         return "Place Ammeter";
     case ToolType::PlaceVoltmeter:
         return "Place Voltmeter";
-    case ToolType::Pan:
-        return "Pan";
+    case ToolType::Move:
+        return "Move";
+    case ToolType::Erase:
+        return "Erase";
     case ToolType::Select:
     default:
         return "Select";
     }
 }
 
-// Only Select/Pan have a directly-applicable icon (cursor/hand); everything else uses
-// the blank transparent texture, rendering as an empty square until real per-tool icons
-// are designed. Always routed through ImageButton (see App::App) so every tool's button
-// is pixel-identical in size, mirroring Newton's Notepad's Tools::draw().
 const char *iconTextureFor(ToolType tool)
 {
     switch (tool)
     {
     case ToolType::Select:
         return "cursor";
-    case ToolType::Pan:
+    case ToolType::Move:
         return "hand";
+    case ToolType::Erase:
+        return "trash";
+    case ToolType::PlacePositiveCharge:
+        return "positive_charge";
+    case ToolType::PlaceNegativeCharge:
+        return "negative_charge";
+    case ToolType::DrawGaussianSurface:
+        return "gaussian_surface";
+    case ToolType::FieldProbe:
+        return "field_probe";
     default:
         return "blank";
     }
@@ -82,12 +94,12 @@ std::vector<ToolType> toolsForMode(Mode mode)
 {
     if (mode == Mode::Fields)
     {
-        return {ToolType::Select, ToolType::PlacePositiveCharge, ToolType::PlaceNegativeCharge,
+        return {ToolType::Select, ToolType::FieldProbe, ToolType::Move, ToolType::PlacePositiveCharge, ToolType::PlaceNegativeCharge,
                 ToolType::PlaceCurrentWire, ToolType::PlaceChargedParticle, ToolType::PlaceMovingLoop,
-                ToolType::DrawGaussianSurface, ToolType::FieldProbe};
+                ToolType::DrawGaussianSurface, ToolType::Erase};
     }
-    return {ToolType::Select, ToolType::PlaceResistor, ToolType::PlaceCapacitor, ToolType::PlaceBattery,
-            ToolType::PlaceSwitch, ToolType::PlaceWire, ToolType::PlaceAmmeter, ToolType::PlaceVoltmeter};
+    return {ToolType::Select, ToolType::Move, ToolType::PlaceResistor, ToolType::PlaceCapacitor, ToolType::PlaceBattery,
+            ToolType::PlaceSwitch, ToolType::PlaceWire, ToolType::PlaceAmmeter, ToolType::PlaceVoltmeter, ToolType::Erase};
 }
 } // namespace
 
@@ -97,9 +109,14 @@ App::App()
       m_mode(Mode::Fields),
       m_accumulatedZoom(1.0f),
       m_lastMousePos(0.0f, 0.0f),
+      m_mouseWorldMeters(0.0f, 0.0f),
       m_isPanning(false),
       m_paused(false),
       m_settingsOpen(false),
+      m_grabbedKind(EntityKind::None),
+      m_grabbedId(-1),
+      m_selectedKind(EntityKind::None),
+      m_selectedId(-1),
       m_accumulator(0.0f),
       m_lastFrameTime(0.0f)
 {
@@ -108,14 +125,12 @@ App::App()
         throw std::runtime_error("Failed to initialize ImGui-SFML.");
     }
 
-    // Panel layout (Stats/Tools/Tool Settings positions) is fully recomputed every frame
-    // in draw(), so it must not be persisted/restored from a dragged-around previous
-    // session - that would silently reintroduce stale positions on the next launch.
+    // Panel positions are recomputed every frame, so don't persist/restore a stale layout.
     ImGui::GetIO().IniFilename = nullptr;
 
     m_window.setFramerateLimit(MAX_FPS);
 
-    for (const char *name : {"cursor", "hand"})
+    for (const char *name : {"cursor", "hand", "trash", "positive_charge", "negative_charge", "gaussian_surface", "field_probe"})
     {
         sf::Texture texture;
         texture.setSmooth(true);
@@ -123,9 +138,8 @@ App::App()
             m_toolTextures.emplace(name, std::move(texture));
     }
 
-    // Fully-transparent placeholder for tools without real icon art yet - always going
-    // through ImageButton (never a plain Button) keeps every tool's rendered size
-    // identical, since ImageButton and Button interpret their size parameter differently.
+    // ImageButton (never plain Button - it sizes differently) keeps every tool's button
+    // pixel-identical in size, even ones still using this blank placeholder texture.
     {
         sf::Image blankImage(sf::Vector2u(TOOLS_ICON_SIZE, TOOLS_ICON_SIZE), sf::Color::Transparent);
         sf::Texture blankTexture;
@@ -220,6 +234,20 @@ void App::processEvents()
             }
             else if (const auto *mouseMoved = event->getIf<sf::Event::MouseMoved>())
             {
+                const sf::Vector2f worldPixelPos = m_window.mapPixelToCoords(sf::Vector2i(mouseMoved->position), m_view);
+                m_mouseWorldMeters = pixelsToMeters(Vec2(worldPixelPos.x, worldPixelPos.y));
+
+                if (m_grabbedKind == EntityKind::Charge)
+                {
+                    if (PointCharge *charge = m_world.findCharge(m_grabbedId))
+                        charge->position = m_mouseWorldMeters;
+                }
+                else if (m_grabbedKind == EntityKind::GaussianSurface)
+                {
+                    if (GaussianSurface *surface = m_world.findGaussianSurface(m_grabbedId))
+                        surface->center = m_mouseWorldMeters;
+                }
+
                 if (m_isPanning)
                 {
                     handlePanMouse(&m_window, &newView, &m_view, mouseMoved, m_lastMousePos, m_accumulatedZoom);
@@ -241,25 +269,58 @@ void App::processEvents()
                 else if (mouseDown->button == sf::Mouse::Button::Left)
                 {
                     const sf::Vector2f worldPos = m_window.mapPixelToCoords(sf::Vector2i(mouseDown->position), m_view);
-                    const Vec2 pos(worldPos.x, worldPos.y);
+                    const Vec2 pos = pixelsToMeters(Vec2(worldPos.x, worldPos.y));
                     if (m_mode == Mode::Fields)
-                        m_tools.onClick(pos, m_world);
+                    {
+                        if (m_tools.activeTool() == ToolType::Move)
+                            beginGrab(pos);
+                        else if (m_tools.activeTool() == ToolType::Select)
+                            selectAt(pos);
+                        else
+                            m_tools.onClick(pos, m_world);
+                    }
                     else
+                    {
                         m_tools.onClick(pos, m_circuit);
+                    }
                 }
             }
-            else if (const auto *mouseUp = event->getIf<sf::Event::MouseButtonReleased>())
-            {
-                if (mouseUp->button == sf::Mouse::Button::Right)
-                {
-                    m_isPanning = false;
-                }
-            }
+        }
+
+        // Outside the WantCaptureMouse gate so a release over an ImGui panel still stops
+        // panning/dragging, instead of leaving it stuck following the mouse.
+        if (const auto *mouseUp = event->getIf<sf::Event::MouseButtonReleased>())
+        {
+            if (mouseUp->button == sf::Mouse::Button::Right)
+                m_isPanning = false;
+            else if (mouseUp->button == sf::Mouse::Button::Left)
+                m_grabbedKind = EntityKind::None;
         }
 
         m_view = newView;
         m_window.setView(m_view);
     }
+}
+
+void App::beginGrab(const Vec2 &pos)
+{
+    const EntityRef hit = m_world.findEntityAt(pos);
+    m_grabbedKind = hit.kind;
+    m_grabbedId = hit.id;
+
+    // Matches Newton's Notepad: grabbing an object with Move also selects it.
+    if (hit.kind != EntityKind::None)
+    {
+        m_selectedKind = hit.kind;
+        m_selectedId = hit.id;
+    }
+}
+
+void App::selectAt(const Vec2 &pos)
+{
+    const EntityRef hit = m_world.findEntityAt(pos);
+    m_selectedKind = hit.kind;
+    m_selectedId = hit.id;
 }
 
 void App::update(float dt)
@@ -340,15 +401,109 @@ void App::drawToolSettingsPanel(float toolsPanelWidth)
     ImGui::Begin("Tool Settings", nullptr, kMovableFlags);
     ImGui::Text("%s Tool", toolName(m_tools.activeTool()));
     ImGui::Separator();
-    ImGui::TextDisabled("(settings added per-phase, see PLAN.md)");
+
+    const ToolType tool = m_tools.activeTool();
+    if (m_mode == Mode::Fields && (tool == ToolType::PlacePositiveCharge || tool == ToolType::PlaceNegativeCharge))
+    {
+        ImGui::Text("Left Click to place a charge");
+        ImGui::Separator();
+        float magnitude = m_tools.chargeMagnitude();
+        if (ImGui::DragFloat("Magnitude (C)", &magnitude, CHARGE_MAGNITUDE_STEP, MIN_CHARGE_MAGNITUDE, MAX_CHARGE_MAGNITUDE, "%.3g"))
+            m_tools.setChargeMagnitude(magnitude);
+    }
+    else if (m_mode == Mode::Fields && tool == ToolType::DrawGaussianSurface)
+    {
+        ImGui::Text("Left Click to place a Gaussian surface");
+        ImGui::Separator();
+        float radius = m_tools.gaussianRadius();
+        if (ImGui::DragFloat("Radius (m)", &radius, GAUSSIAN_SURFACE_RADIUS_STEP, MIN_GAUSSIAN_SURFACE_RADIUS, MAX_GAUSSIAN_SURFACE_RADIUS, "%.2f"))
+            m_tools.setGaussianRadius(radius);
+    }
+    else if (m_mode == Mode::Fields && tool == ToolType::FieldProbe)
+    {
+        const FieldSampler sampler;
+        const Vec2 field = sampler.fieldAt(m_mouseWorldMeters, m_world.charges());
+        const float potential = sampler.potentialAt(m_mouseWorldMeters, m_world.charges());
+        constexpr float kRadToDeg = 180.0f / 3.14159265358979f;
+
+        ImGui::Text("Hover to read the field/potential at the cursor");
+        ImGui::Separator();
+        ImGui::Text("Position: %s m", m_mouseWorldMeters.toString().c_str());
+        ImGui::Text("Potential: %.4g V", potential);
+        ImGui::Text("Field: %.4g N/C @ %.1f deg", field.length(), field.angle() * kRadToDeg);
+    }
+    else if (tool == ToolType::Move)
+    {
+        ImGui::Text("Left Click and drag to move a charge or Gaussian surface");
+    }
+    else if (tool == ToolType::Erase)
+    {
+        ImGui::Text("Left Click to erase a charge or Gaussian surface");
+    }
+    else if (tool == ToolType::Select)
+    {
+        ImGui::Text("Left Click to select a charge or Gaussian surface");
+    }
+    else
+    {
+        ImGui::TextDisabled("(settings added per-phase, see PLAN.md)");
+    }
+
     ImGui::End();
 }
 
 void App::drawPropertiesPanel()
 {
-    // No selection concept exists yet - entity placement/selection is Phase 2+. This
-    // mirrors Newton's Notepad's Object Properties panel, which only appears once
-    // something is actually selected, rather than always being visible.
+    if (m_mode != Mode::Fields || m_selectedKind == EntityKind::None)
+        return;
+
+    if (m_selectedKind == EntityKind::Charge)
+    {
+        PointCharge *charge = m_world.findCharge(m_selectedId);
+        if (!charge)
+        {
+            m_selectedKind = EntityKind::None;
+            return;
+        }
+
+        ImGui::SetNextWindowPos(ImVec2(10.0f, 300.0f), ImGuiCond_Once);
+        ImGui::Begin("Properties", nullptr, kMovableFlags);
+        ImGui::Text("Point Charge");
+        ImGui::Separator();
+
+        bool positive = charge->charge >= 0.0f;
+        float magnitude = std::abs(charge->charge);
+        if (ImGui::RadioButton("Positive", positive))
+            charge->charge = magnitude;
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Negative", !positive))
+            charge->charge = -magnitude;
+        if (ImGui::DragFloat("Magnitude (C)", &magnitude, CHARGE_MAGNITUDE_STEP, MIN_CHARGE_MAGNITUDE, MAX_CHARGE_MAGNITUDE, "%.3g"))
+            charge->charge = positive ? magnitude : -magnitude;
+        ImGui::Text("Position: %s m", charge->position.toString().c_str());
+
+        ImGui::End();
+    }
+    else if (m_selectedKind == EntityKind::GaussianSurface)
+    {
+        GaussianSurface *surface = m_world.findGaussianSurface(m_selectedId);
+        if (!surface)
+        {
+            m_selectedKind = EntityKind::None;
+            return;
+        }
+
+        ImGui::SetNextWindowPos(ImVec2(10.0f, 300.0f), ImGuiCond_Once);
+        ImGui::Begin("Properties", nullptr, kMovableFlags);
+        ImGui::Text("Gaussian Surface");
+        ImGui::Separator();
+
+        ImGui::DragFloat("Radius (m)", &surface->radius, GAUSSIAN_SURFACE_RADIUS_STEP, MIN_GAUSSIAN_SURFACE_RADIUS, MAX_GAUSSIAN_SURFACE_RADIUS, "%.2f");
+        ImGui::Text("Center: %s m", surface->center.toString().c_str());
+        ImGui::Text("Enclosed charge: %.3g C", surface->enclosedCharge(m_world.charges()));
+
+        ImGui::End();
+    }
 }
 
 void App::drawSettingsPanel()
@@ -361,6 +516,16 @@ void App::drawSettingsPanel()
     ImGui::SameLine();
     if (ImGui::RadioButton("Circuits", !fieldsMode))
         m_mode = Mode::Circuits;
+
+    if (fieldsMode)
+    {
+        ImGui::Separator();
+        ImGui::Checkbox("Field Vectors", &m_renderer.showFieldVectors);
+        ImGui::Checkbox("Field Lines", &m_renderer.showFieldLines);
+        ImGui::Separator();
+        if (ImGui::Button("Load Dipole Field Preset"))
+            Presets::loadDipoleField(m_world);
+    }
 
     const ImVec2 settingsWindowSize = ImGui::GetWindowSize();
     ImGui::SetWindowPos(ImVec2((static_cast<float>(m_window.getSize().x) - settingsWindowSize.x) * 0.5f, (static_cast<float>(m_window.getSize().y) - settingsWindowSize.y) * 0.5f), ImGuiCond_Always);

@@ -6,7 +6,7 @@ You can use AI for such updates, but all text should be human-reviewed.
 
 # Codebase Structure
 
-> **Scaffold status**: Phase 1 (the app shell - window, main loop, pan/zoom/resize, mode switching, gridlines, log/screenshot/graph folder setup) is implemented and verified (builds and launches). Everything domain-specific (electrostatics/magnetism/induction/circuits, and the shared solver) is still a stub interface (header class shells, `TODO(Phase N)` method bodies) - see [PLAN.md](PLAN.md) for the phased build order.
+> **Scaffold status**: Phase 1 (the app shell) and Phase 2 (electrostatics) are implemented; Phase 1 is build+launch verified, Phase 2 builds cleanly and is pending an interactive manual pass. Magnetism/induction/circuits, and the shared solver, are still stub interfaces (header class shells, `TODO(Phase N)` method bodies) - see [PLAN.md](PLAN.md) for the phased build order.
 
 ## Core Directories and Files
 
@@ -27,6 +27,17 @@ You can use AI for such updates, but all text should be human-reviewed.
 
 ---
 
+#### `src/assets/` - Tool Icons
+- Select/Move/Erase reuse `cursor.png`/`hand.png`/`trash.png` (copied as-is).
+- Every other tool icon is authored as SVG in `src/assets/icons_src/<name>.svg` (white fill,
+  black stroke, transparent background, 100x100 viewBox - matches `cursor.png`/`hand.png`'s
+  style), then rasterized to a 32x32 (`TOOLS_ICON_SIZE`) PNG in `src/assets/<name>.png` via
+  `cairosvg.svg2png(url=..., write_to=..., output_width=32, output_height=32)`. New tool icons
+  in future phases should follow this same SVG-source-then-rasterize workflow rather than
+  shipping only a PNG or leaving the tool on the blank placeholder texture.
+
+---
+
 ### `src/core/` - Application Shell
 
 #### `App.hpp / App.cpp`
@@ -37,8 +48,10 @@ You can use AI for such updates, but all text should be human-reviewed.
   - Owns one `World` (Fields mode), one `CircuitGraph` (Circuits mode), one `Tools`, one `Renderer`, one `Logger`, one `Grapher` - only one scene is active/visible at a time, gated by `m_mode`
 - **Key methods** (implemented):
   - `run()`: fixed-timestep accumulator loop (`CALC_FREQ`, capped at `MAX_UPDATES_PER_FRAME`) around `processEvents()`/`update()`/`draw()`
-  - `processEvents()`: window close/resize, pan (`RMB` drag)/zoom (wheel)/reset view (`MMB`), `P` to pause, left-click routed to `Tools::onClick` against whichever of `m_world`/`m_circuit` is active
-  - `drawToolsPanel()`, `drawPropertiesPanel()`, `drawSettingsPanel()`: the three ImGui panels - settings has the working Fields/Circuits mode switch and pause button; tools/properties are placeholder shells until their respective phases land
+  - `processEvents()`: window close/resize, pan (`RMB` drag)/zoom (wheel)/reset view (`MMB`), `Esc` opens Settings, `P` pauses independently, left-click position is converted pixels->meters; Move hit-tests via `World::findEntityAt` and grabs (`beginGrab`), Select hit-tests and sets the persistent selection (`selectAt`), everything else routes to `Tools::onClick`. `m_mouseWorldMeters` is tracked continuously for the Field Probe readout; a grabbed entity's position/center is updated on every mouse move
+  - `drawToolsPanel()`/`drawToolSettingsPanel()`: always-visible, fixed top-left panels; Tool Settings shows per-tool controls (charge magnitude, Gaussian radius, Field Probe's live readout, Move/Erase/Select hints)
+  - `drawPropertiesPanel()`: draws once `m_selectedKind != EntityKind::None` and the entity still exists (re-checked by id each frame, so it self-clears if the selection was erased) - editable magnitude/sign for a charge, radius for a Gaussian surface
+  - `drawSettingsPanel()`: `Esc`-toggled modal with the Fields/Circuits mode switch, Field Vector/Line toggles, and a "Load Dipole Field Preset" button
 
 #### `Mode.hpp`
 - **What it does**: `enum class Mode { Fields, Circuits }` - the top-level mode switch. See "Architecture" in [PLAN.md](PLAN.md) for why Fields and Circuits are split rather than one unified scene.
@@ -46,12 +59,12 @@ You can use AI for such updates, but all text should be human-reviewed.
 #### `World.hpp / World.cpp`
 - **What it does**: Container for the Fields-mode scene
 - **Holds**: `PointCharge`s, `CurrentWire`s, `ChargedParticle`s, `MovingLoop`s, `GaussianSurface`s, one `UniformBField` - all on one spatial canvas so electrostatics/magnetism/induction entities can interact (e.g. a charged particle feels both `E` from charges and `v x B` from the field)
-- **Key methods**: `reset()`, `update(dt)` (currently only advances sim time; force/motion integration is `TODO(Phase 2/3/4)`)
+- **Key methods**: `reset()`, `update(dt)` (currently only advances sim time; force/motion integration is `TODO(Phase 2/3/4)`); `allocateEntityId()` gives each placed charge/surface a stable id (see `PointCharge`/`GaussianSurface`); `findEntityAt(pos)`/`removeEntity(kind, id)`/`findCharge(id)`/`findGaussianSurface(id)` are the shared hit-test/lookup used by the Move/Select/Erase tools and the Properties panel, keyed by id (not vector index) so a selection/grab stays valid across insertions/erasures elsewhere in the scene
 
 #### `Tools.hpp / Tools.cpp`
 - **What it does**: User interaction tools
-- **`ToolType` enum**: Fields-mode tools (place charge/wire/particle/loop, draw Gaussian surface, field probe) and Circuits-mode tools (place resistor/capacitor/battery/switch/wire, ammeter/voltmeter), plus shared `Select`/`Pan`
-- **Key methods**: `onClick(worldPos, World&)` and an overload for `CircuitGraph&`, routed by the active mode - both currently `TODO`
+- **`ToolType` enum**: Fields-mode tools (place charge/wire/particle/loop, draw Gaussian surface, field probe) and Circuits-mode tools (place resistor/capacitor/battery/switch/wire, ammeter/voltmeter), plus shared `Select`/`Move`/`Erase` (camera pan is unconditional via right-mouse-drag, not a tool)
+- **Key methods**: `onClick(worldPos, World&)` places a `PointCharge` (`PlacePositiveCharge`/`PlaceNegativeCharge`) or `GaussianSurface` (`DrawGaussianSurface`) at the tool's adjustable `chargeMagnitude()`/`gaussianRadius()`, or erases whatever `World::findEntityAt` hits (`Erase`). Move and Select are handled in `App` instead (they need press/drag/release and persistent state, not a single click). The `CircuitGraph&` overload is still `TODO(Phase 5)`.
 
 #### `UI.hpp`
 - **What it does**: View/window helpers (pan, zoom, resize, letterboxing) - `handleResize`/`handleZoom`/`handlePanMouse`/`calculateLetterboxViewport`/`clampViewToWorld`, all implemented. Pan/zoom is clamped to the `DEF_WIDTH`/`DEF_HEIGHT` canvas (a Phase 1 default, easy to widen later if Fields mode needs a larger pannable area)
@@ -67,7 +80,7 @@ You can use AI for such updates, but all text should be human-reviewed.
 
 #### `FieldMath.hpp / FieldMath.cpp`
 - **What it does**: Shared force/field formulas so electrostatics/magnetism/induction stay thin data classes
-- **Functions**: `coulombField`/`coulombPotential` (superposition), `coulombForceMagnitude` (implemented), `biotSavartField`, `forceBetweenWires`, `lorentzForce` (signatures fixed, bodies `TODO(Phase 2/3)`)
+- **Functions**: `coulombField`/`coulombPotential` (implemented - superposition over all charges, with a clamped minimum separation to avoid a singularity directly on a charge), `coulombForceMagnitude` (implemented); `biotSavartField`, `forceBetweenWires`, `lorentzForce` (signatures fixed, bodies `TODO(Phase 3)`)
 
 ---
 
@@ -77,14 +90,14 @@ You can use AI for such updates, but all text should be human-reviewed.
 - Position + signed charge magnitude (Coulombs). Trivial value type, fully implemented.
 
 #### `FieldSampler.hpp / FieldSampler.cpp`
-- `fieldAt`/`potentialAt`: thin wrappers over `FieldMath`, for grid sampling (vector arrows) and cursor potential readout
-- `TODO(Phase 2)`: field-line tracing (seeded polylines following `fieldAt`)
+- `fieldAt`/`potentialAt`: thin wrappers over `FieldMath`, for grid sampling (vector arrows) and the Field Probe's cursor readout
+- `traceFieldLine(seed, charges, followField)`: marches along (or, if `followField` is false, against) the local E direction from `seed` until it nears a charge, escapes the domain, or hits the step cap (`FIELD_LINE_STEP`/`FIELD_LINE_MAX_STEPS`/`FIELD_LINE_CAPTURE_RADIUS`/`FIELD_LINE_MAX_RADIUS`). `Renderer` seeds a ring around each charge and follows the field outward from positive charges, inward for negative ones.
 
 #### `EquipotentialTracer.hpp / EquipotentialTracer.cpp`
-- `traceContours(charges, potentialValue)`: marching-squares-style contour extraction - `TODO(Phase 2)`
+- `traceContours(charges, potentialValues)`: standard 16-case marching-squares contour extraction over a potential grid padded around the charges (`EQUIPOTENTIAL_GRID_STEP` resolution). Takes every requested level at once (rather than one call per level) so each cell's corner potentials are sampled once and reused across levels. Returns unmerged per-cell segments rather than globally-stitched polylines - simpler, and visually indistinguishable once drawn together.
 
 #### `GaussianSurface.hpp / GaussianSurface.cpp`
-- User-drawn circle; `enclosedCharge`/`flux` per Gauss's law - `TODO(Phase 2)`
+- User-drawn circle; `enclosedCharge` sums charge magnitudes within `radius` of `center`, `flux` divides by `VACUUM_PERMITTIVITY` per Gauss's law. Both implemented.
 
 ---
 
@@ -132,7 +145,7 @@ You can use AI for such updates, but all text should be human-reviewed.
 - 2D vector math: arithmetic operators, `length()`/`normalized()`/`rotate()`/`perpendicular()`, `dot()`/`cross()` free functions
 
 #### `Util.hpp`
-- `pixelsToMeters()`/`metersToPixels()` conversions (scalar and `Vec2` overloads). No position-standardization step here, unlike Newton's Notepad - Fields mode has no ground/wall reference, so world positions are just meters relative to the view origin
+- `pixelsToMeters()`/`metersToPixels()` conversions (scalar and `Vec2` overloads). No position-standardization step - Fields mode has no ground/wall reference, so world positions are just meters relative to the view origin
 
 ---
 
@@ -141,7 +154,7 @@ You can use AI for such updates, but all text should be human-reviewed.
 #### `Renderer.hpp / Renderer.cpp`
 - **What it does**: Draws the grid, then mode-dependent content
 - **Toggle flags**: `showFieldVectors`, `showFieldLines`, `showEquipotentials`, `showCurrentFlowAnimation`
-- **Key methods**: `drawGridlines()` (implemented - minor/major spacing, axis highlight, view-relative); `drawWorld()` (charges/fields/particles/loops) and `drawCircuit()` (schematic + live V/I/R/Q labels + current-flow animation) are still `TODO`, pending Phase 2+ entity data to draw
+- **Key methods**: `drawGridlines()` (implemented); `drawWorld()` draws, in back-to-front order: equipotential contours, field lines, field vectors (arrows, length compressed toward `FIELD_VECTOR_MAX_LENGTH` so they don't blow up near a charge), Gaussian surfaces (with an ImGui-overlay `Q_enc` label), then charges on top. `drawCircuit()` (schematic + live V/I/R/Q labels + current-flow animation) is still `TODO(Phase 5)`.
 
 ---
 
@@ -165,7 +178,7 @@ You can use AI for such updates, but all text should be human-reviewed.
 ### `src/scenes/` - Preloaded Test Scenes
 
 #### `Presets.hpp / Presets.cpp`
-- One function per preset: `loadDipoleField`, `loadParallelPlateCapacitor`, `loadSimpleRCCircuit`, `loadParticleInUniformB` - all `TODO`, implemented alongside the phase that needs them (see PLAN.md)
+- One function per preset: `loadDipoleField` (implemented - a +/- charge pair 2 meters apart, wired to a button in the Settings modal), `loadParallelPlateCapacitor`, `loadSimpleRCCircuit`, `loadParticleInUniformB` - the rest `TODO`, implemented alongside the phase that needs them (see PLAN.md)
 
 ---
 
@@ -259,7 +272,7 @@ User sees updated simulation
   - fmt (formatted output) - git submodule
   - matplot++ (graphing via gnuplot) - git submodule
 - **Build command**: `cmake -B build && cmake --build build` (requires `git submodule update --init --recursive` first if cloned without `--recurse-submodules`)
-- **Current status**: configures and links against stub sources; no window/simulation logic runs yet (Phase 1, see PLAN.md)
+- **Current status**: builds and links a working app shell (Phase 1) with electrostatics (Phase 2) implemented; magnetism/induction/circuits remain stub sources (see PLAN.md)
 
 ---
 

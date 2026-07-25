@@ -10,10 +10,11 @@
 class GaussianSurface
 {
 public:
-    GaussianSurface(Vec2 center, float radius) : center(center), radius(radius) {}
+    GaussianSurface(Vec2 center, float radius, int id) : center(center), radius(radius), id(id) {}
 
     Vec2 center;
     float radius;
+    int id; // stable identity for selection/grab, independent of vector index
 
     float enclosedCharge(const std::vector<PointCharge> &charges) const;
     float flux(const std::vector<PointCharge> &charges) const;
