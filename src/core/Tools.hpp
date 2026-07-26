@@ -14,6 +14,7 @@ enum class ToolType
     PlaceCurrentWire,
     PlaceChargedParticle,
     PlaceMovingLoop,
+    PlaceCurrentLoop,
     DrawGaussianSurface,
     FieldProbe,
 
@@ -68,6 +69,13 @@ public:
     float loopAngularVelocity() const;
     void setLoopAngularVelocity(float angularVelocity);
 
+    float currentLoopRadius() const;
+    void setCurrentLoopRadius(float radius);
+    float currentLoopCurrent() const;
+    void setCurrentLoopCurrent(float current);
+    int currentLoopTurns() const;
+    void setCurrentLoopTurns(int turns);
+
     // A wire needs two points, so it's placed by click-drag (start on press, end on
     // release) rather than the single-click Tools::onClick path.
     bool isDraggingWire() const;
@@ -92,4 +100,8 @@ private:
     float m_loopRadius;
     int m_loopTurns;
     float m_loopAngularVelocity;
+
+    float m_currentLoopRadius;
+    float m_currentLoopCurrent;
+    int m_currentLoopTurns;
 };

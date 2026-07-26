@@ -131,6 +131,22 @@
 
 #define WIRE_PARALLEL_DOT_THRESHOLD 0.98f // |dot of unit directions| above this counts as "parallel" for the force readout
 
+#define MIN_CURRENT_LOOP_RADIUS 0.3f     // meters
+#define MAX_CURRENT_LOOP_RADIUS 3.0f     // meters
+#define DEFAULT_CURRENT_LOOP_RADIUS 1.0f // meters
+#define CURRENT_LOOP_RADIUS_STEP 0.05f   // meters, Tool Settings drag-slider step
+
+#define MIN_CURRENT_LOOP_CURRENT -20.0f   // A
+#define MAX_CURRENT_LOOP_CURRENT 20.0f    // A
+#define DEFAULT_CURRENT_LOOP_CURRENT 5.0f // A
+#define CURRENT_LOOP_CURRENT_STEP 0.1f    // A, Tool Settings drag-slider step
+
+// "Loop count" - ampere-turns (turns * current) scales the generated field the same way
+// a multi-turn coil would, without modeling each individual winding.
+#define MIN_CURRENT_LOOP_TURNS 1
+#define MAX_CURRENT_LOOP_TURNS 100
+#define DEFAULT_CURRENT_LOOP_TURNS 1
+
 // INDUCTION CONFIGURATION
 #define MIN_LOOP_RADIUS 0.3f     // meters
 #define MAX_LOOP_RADIUS 3.0f     // meters
@@ -148,6 +164,11 @@
 
 #define LOOP_COLOR sf::Color(230, 230, 230, 255)
 #define INDUCED_EMF_ARROW_COLOR sf::Color(255, 210, 80, 255)
+
+// A coil's turns are drawn as concentric rings stepping inward from the nominal radius,
+// capped well below MAX_*_TURNS so a high turn count doesn't collapse into a solid disc.
+#define LOOP_VISUAL_MAX_RINGS 5
+#define LOOP_RING_SPACING 0.06f // meters between successive rings
 
 // A loop has no defined resistance yet (that's a circuits concept), so its current-flow
 // marker speed saturates against induced EMF directly rather than an Amp value.

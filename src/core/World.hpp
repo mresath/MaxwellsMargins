@@ -6,6 +6,7 @@
 #include "electrostatics/PointCharge.hpp"
 #include "induction/MovingLoop.hpp"
 #include "magnetism/ChargedParticle.hpp"
+#include "magnetism/CurrentLoop.hpp"
 #include "magnetism/CurrentWire.hpp"
 #include "magnetism/UniformBField.hpp"
 #include "math/Vec2.hpp"
@@ -17,7 +18,8 @@ enum class EntityKind
     GaussianSurface,
     Particle,
     Wire,
-    Loop
+    Loop,
+    CurrentLoop
 };
 
 struct EntityRef
@@ -40,6 +42,7 @@ public:
 
     std::vector<PointCharge> &charges();
     std::vector<CurrentWire> &wires();
+    std::vector<CurrentLoop> &currentLoops();
     std::vector<ChargedParticle> &particles();
     std::vector<MovingLoop> &loops();
     std::vector<GaussianSurface> &gaussianSurfaces();
@@ -47,6 +50,7 @@ public:
 
     const std::vector<PointCharge> &charges() const;
     const std::vector<CurrentWire> &wires() const;
+    const std::vector<CurrentLoop> &currentLoops() const;
     const std::vector<ChargedParticle> &particles() const;
     const std::vector<MovingLoop> &loops() const;
     const std::vector<GaussianSurface> &gaussianSurfaces() const;
@@ -63,6 +67,7 @@ public:
     ChargedParticle *findParticle(int id);
     CurrentWire *findWire(int id);
     MovingLoop *findLoop(int id);
+    CurrentLoop *findCurrentLoop(int id);
 
     // The single global field: every source at once (charges+particles for E; uniform
     // field+wires+particles for B). excludeParticleId skips that particle's own self-field.
@@ -82,6 +87,7 @@ public:
 private:
     std::vector<PointCharge> m_charges;
     std::vector<CurrentWire> m_wires;
+    std::vector<CurrentLoop> m_currentLoops;
     std::vector<ChargedParticle> m_particles;
     std::vector<MovingLoop> m_loops;
     std::vector<GaussianSurface> m_gaussianSurfaces;

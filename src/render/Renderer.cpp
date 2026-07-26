@@ -8,6 +8,7 @@
 #include "engine/FieldMath.hpp"
 #include "induction/MovingLoop.hpp"
 #include "magnetism/ChargedParticle.hpp"
+#include "magnetism/CurrentLoop.hpp"
 #include "magnetism/CurrentWire.hpp"
 #include "math/Util.hpp"
 
@@ -100,6 +101,57 @@ void drawFlowMarker(sf::RenderWindow &window, const Vec2 &pointMeters, const Vec
         shape.setPosition(centerPixels);
         shape.setFillColor(NEGATIVE_CHARGE_COLOR);
         window.draw(shape);
+    }
+}
+
+// A coil's turns, drawn as concentric rings stepping inward from the nominal radius
+// (capped at LOOP_VISUAL_MAX_RINGS so a high turn count reads as "many" without becoming
+// a solid disc); squish matches drawCircularFlowMarkers' foreshortening convention.
+void drawLoopRings(sf::RenderWindow &window, const Vec2 &center, float radius, float squish, int turns, const sf::Color &color)
+{
+    const int rings = std::min(turns, LOOP_VISUAL_MAX_RINGS);
+    for (int i = 0; i < rings; ++i)
+    {
+        const float ringRadius = radius - static_cast<float>(i) * LOOP_RING_SPACING;
+        if (ringRadius <= 0.0f)
+            break;
+
+        const float radiusPixels = metersToPixels(ringRadius);
+        sf::CircleShape shape(radiusPixels);
+        shape.setOrigin(sf::Vector2f(radiusPixels, radiusPixels));
+        shape.setPosition(sf::Vector2f(metersToPixels(center.x), metersToPixels(center.y)));
+        shape.setScale(sf::Vector2f(squish, 1.0f));
+        shape.setFillColor(sf::Color::Transparent);
+        shape.setOutlineColor(color);
+        shape.setOutlineThickness(2.0f);
+        window.draw(shape);
+    }
+}
+
+// Shared by MovingLoop (squish foreshortens with rotationAngle) and CurrentLoop (squish
+// fixed at 1 - it's flat, not tilting), each passing its own signed physical quantity.
+void drawCircularFlowMarkers(sf::RenderWindow &window, const Vec2 &center, float radius, float squish, float signedQuantity,
+                              float saturationConstant, float simTime, CurrentFlowDisplay mode)
+{
+    const float magnitude = std::abs(signedQuantity);
+    if (magnitude < 1e-6f)
+        return;
+
+    const float angularSpeed = (CURRENT_FLOW_MAX_SPEED * (magnitude / (magnitude + saturationConstant)) / radius) *
+                                flowDirectionSign(signedQuantity, mode);
+    const float angleStep = CURRENT_FLOW_MARKER_SPACING / radius;
+
+    float phase = std::fmod(simTime * angularSpeed, angleStep);
+    if (phase < 0.0f)
+        phase += angleStep;
+
+    constexpr float kTwoPi = 6.28318530718f;
+    for (float angle = phase; angle < kTwoPi; angle += angleStep)
+    {
+        const Vec2 offset(std::cos(angle) * radius * squish, std::sin(angle) * radius);
+        const Vec2 tangent(-std::sin(angle) * squish, std::cos(angle));
+        const Vec2 travelDirection = angularSpeed >= 0.0f ? tangent : tangent * -1.0f;
+        drawFlowMarker(window, center + offset, travelDirection, mode);
     }
 }
 } // namespace
@@ -206,6 +258,7 @@ void Renderer::drawWorld(sf::RenderWindow &window, const World &world, const std
     drawGaussianSurfaces(window, world.gaussianSurfaces(), world.charges());
     drawWires(window, world, wirePreview);
     drawWireForceReadouts(window, world);
+    drawCurrentLoops(window, world);
     drawParticles(window, world.particles());
     drawLoops(window, world);
     drawCharges(window, world.charges());
@@ -500,49 +553,20 @@ void Renderer::drawParticles(sf::RenderWindow &window, const std::vector<Charged
 
 void Renderer::drawLoops(sf::RenderWindow &window, const World &world) const
 {
-    constexpr float kTwoPi = 6.28318530718f;
-
     for (const auto &loop : world.loops())
     {
         const float radiusPixels = metersToPixels(loop.radius);
         // Correct orthographic projection of a true 3D circle tilting out of the page.
         const float squish = std::abs(std::cos(loop.rotationAngle));
-
-        sf::CircleShape shape(radiusPixels);
-        shape.setOrigin(sf::Vector2f(radiusPixels, radiusPixels));
-        shape.setPosition(sf::Vector2f(metersToPixels(loop.center.x), metersToPixels(loop.center.y)));
-        shape.setScale(sf::Vector2f(squish, 1.0f));
-        shape.setFillColor(sf::Color::Transparent);
-        shape.setOutlineColor(LOOP_COLOR);
-        shape.setOutlineThickness(2.0f);
-        window.draw(shape);
+        drawLoopRings(window, loop.center, loop.radius, squish, loop.turns, LOOP_COLOR);
 
         if (std::abs(loop.inducedEMF) < MIN_DISPLAYED_EMF)
             continue;
 
+        // No resistance is modeled for a bare loop (that's a circuits concept), so marker
+        // speed saturates against the induced EMF itself rather than an Amp value.
         if (currentFlowDisplay != CurrentFlowDisplay::Off)
-        {
-            // No resistance is modeled for a bare loop (that's a circuits concept), so
-            // marker speed saturates against the induced EMF itself rather than an Amp value.
-            const float magnitude = std::abs(loop.inducedEMF);
-            const float angularSpeed = (CURRENT_FLOW_MAX_SPEED * (magnitude / (magnitude + CURRENT_FLOW_EMF_SATURATION)) / loop.radius) *
-                                        flowDirectionSign(loop.inducedEMF, currentFlowDisplay);
-            const float angleStep = CURRENT_FLOW_MARKER_SPACING / loop.radius;
-
-            float phase = std::fmod(world.simTime() * angularSpeed, angleStep);
-            if (phase < 0.0f)
-                phase += angleStep;
-
-            // Parametrized over the true circle's angle (equal arc-length steps in 3D), with
-            // only the rendered x-position squished - same projection reasoning as the outline.
-            for (float angle = phase; angle < kTwoPi; angle += angleStep)
-            {
-                const Vec2 offset(std::cos(angle) * loop.radius * squish, std::sin(angle) * loop.radius);
-                const Vec2 tangent(-std::sin(angle) * squish, std::cos(angle));
-                const Vec2 travelDirection = angularSpeed >= 0.0f ? tangent : tangent * -1.0f;
-                drawFlowMarker(window, loop.center + offset, travelDirection, currentFlowDisplay);
-            }
-        }
+            drawCircularFlowMarkers(window, loop.center, loop.radius, squish, loop.inducedEMF, CURRENT_FLOW_EMF_SATURATION, world.simTime(), currentFlowDisplay);
 
         const std::string label = fmt::format("EMF = {:.3g} V", loop.inducedEMF);
         const sf::Vector2f labelWorldPos(metersToPixels(loop.center.x), metersToPixels(loop.center.y) - radiusPixels - 16.0f);
@@ -551,5 +575,16 @@ void Renderer::drawLoops(sf::RenderWindow &window, const World &world) const
         const sf::Color &c = INDUCED_EMF_ARROW_COLOR;
         ImGui::GetForegroundDrawList()->AddText(ImVec2(static_cast<float>(screenPos.x), static_cast<float>(screenPos.y)),
                                                  IM_COL32(c.r, c.g, c.b, c.a), label.c_str());
+    }
+}
+
+void Renderer::drawCurrentLoops(sf::RenderWindow &window, const World &world) const
+{
+    for (const auto &loop : world.currentLoops())
+    {
+        drawLoopRings(window, loop.center, loop.radius, 1.0f, loop.turns, LOOP_COLOR);
+
+        if (currentFlowDisplay != CurrentFlowDisplay::Off)
+            drawCircularFlowMarkers(window, loop.center, loop.radius, 1.0f, loop.current, CURRENT_FLOW_SPEED_SATURATION, world.simTime(), currentFlowDisplay);
     }
 }

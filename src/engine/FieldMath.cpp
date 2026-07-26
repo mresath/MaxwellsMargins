@@ -2,6 +2,7 @@
 
 #include "Config.hpp"
 #include "electrostatics/PointCharge.hpp"
+#include "magnetism/CurrentLoop.hpp"
 #include "magnetism/CurrentWire.hpp"
 
 #include <cmath>
@@ -32,6 +33,15 @@ float singleWireField(const Vec2 &point, const CurrentWire &wire, float permeabi
 
     return (VACUUM_PERMEABILITY * permeabilityFactor * wire.current / (4.0f * kPi * perp)) *
            (s1 / std::sqrt(perp * perp + s1 * s1) - s2 / std::sqrt(perp * perp + s2 * s2));
+}
+
+// On-axis field of a circular loop, evaluated at planar distance d from its center rather
+// than true axial distance (see FieldMath.hpp) - exact at d=0, an approximation elsewhere.
+float singleCurrentLoopField(const Vec2 &point, const CurrentLoop &loop, float permeabilityFactor)
+{
+    const float d = (point - loop.center).length();
+    const float denom = std::pow(loop.radius * loop.radius + d * d, 1.5f);
+    return VACUUM_PERMEABILITY * permeabilityFactor * static_cast<float>(loop.turns) * loop.current * loop.radius * loop.radius / (2.0f * denom);
 }
 } // namespace
 
@@ -84,6 +94,14 @@ float biotSavartField(const Vec2 &point, const std::vector<CurrentWire> &wires, 
     float total = 0.0f;
     for (const auto &wire : wires)
         total += singleWireField(point, wire, permeabilityFactor);
+    return total;
+}
+
+float currentLoopField(const Vec2 &point, const std::vector<CurrentLoop> &loops, float permeabilityFactor)
+{
+    float total = 0.0f;
+    for (const auto &loop : loops)
+        total += singleCurrentLoopField(point, loop, permeabilityFactor);
     return total;
 }
 

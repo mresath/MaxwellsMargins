@@ -94,6 +94,19 @@ $$
 
 so charged particles feel and exert magnetic forces on each other, not just on/from wires.
 
+**Circular current loop** (`CurrentLoop`): the on-axis field of a loop of radius $R$ and
+$N$ turns, exact at distance $d$ along the axis through its center:
+
+$$
+B = \frac{\mu_0 N I R^2}{2(R^2+d^2)^{3/2}}
+$$
+
+`FieldMath::currentLoopField` reuses this formula with $d$ = planar distance from the
+loop's own center rather than true axial distance, since the exact off-axis field needs
+elliptic integrals - exact at the center, an approximation elsewhere. `turns` on both
+`CurrentLoop` and `MovingLoop` models a multi-turn coil as ampere-turns/flux-linkage
+($N \times$ current or $N \times$ flux) rather than simulating each individual winding.
+
 **Playground scale**: at the real $\mu_0 \approx 1.26\times10^{-6}$, a wire's or particle's
 own generated field is negligible next to electrostatics' charge scale. `permeabilityFactor`
 (Settings panel, default $10^6$, "1x" button for real physics) multiplies $\mu_0$ in both

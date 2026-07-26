@@ -40,6 +40,8 @@ const char *toolName(ToolType tool)
         return "Place Charged Particle";
     case ToolType::PlaceMovingLoop:
         return "Place Moving Loop";
+    case ToolType::PlaceCurrentLoop:
+        return "Place Current Loop";
     case ToolType::DrawGaussianSurface:
         return "Draw Gaussian Surface";
     case ToolType::FieldProbe:
@@ -92,6 +94,8 @@ const char *iconTextureFor(ToolType tool)
         return "current_wire";
     case ToolType::PlaceMovingLoop:
         return "moving_loop";
+    case ToolType::PlaceCurrentLoop:
+        return "current_loop";
     default:
         return "blank";
     }
@@ -102,7 +106,7 @@ std::vector<ToolType> toolsForMode(Mode mode)
     if (mode == Mode::Fields)
     {
         return {ToolType::Select, ToolType::FieldProbe, ToolType::Move, ToolType::PlacePositiveCharge, ToolType::PlaceNegativeCharge,
-                ToolType::PlaceCurrentWire, ToolType::PlaceChargedParticle, ToolType::PlaceMovingLoop,
+                ToolType::PlaceCurrentWire, ToolType::PlaceChargedParticle, ToolType::PlaceMovingLoop, ToolType::PlaceCurrentLoop,
                 ToolType::DrawGaussianSurface, ToolType::Erase};
     }
     return {ToolType::Select, ToolType::Move, ToolType::PlaceResistor, ToolType::PlaceCapacitor, ToolType::PlaceBattery,
@@ -137,7 +141,7 @@ App::App()
 
     m_window.setFramerateLimit(MAX_FPS);
 
-    for (const char *name : {"cursor", "hand", "trash", "positive_charge", "negative_charge", "gaussian_surface", "field_probe", "charged_particle", "current_wire", "moving_loop"})
+    for (const char *name : {"cursor", "hand", "trash", "positive_charge", "negative_charge", "gaussian_surface", "field_probe", "charged_particle", "current_wire", "moving_loop", "current_loop"})
     {
         sf::Texture texture;
         texture.setSmooth(true);
@@ -274,6 +278,11 @@ void App::processEvents()
                 else if (m_grabbedKind == EntityKind::Loop)
                 {
                     if (MovingLoop *loop = m_world.findLoop(m_grabbedId))
+                        loop->center = m_mouseWorldMeters;
+                }
+                else if (m_grabbedKind == EntityKind::CurrentLoop)
+                {
+                    if (CurrentLoop *loop = m_world.findCurrentLoop(m_grabbedId))
                         loop->center = m_mouseWorldMeters;
                 }
 
@@ -521,6 +530,23 @@ void App::drawToolSettingsPanel(float toolsPanelWidth)
             m_tools.setLoopAngularVelocity(angularVelocity);
         ImGui::TextDisabled("Set translational velocity after placing, via Properties");
     }
+    else if (m_mode == Mode::Fields && tool == ToolType::PlaceCurrentLoop)
+    {
+        ImGui::Text("Left Click to place a stationary current loop");
+        ImGui::Separator();
+
+        float radius = m_tools.currentLoopRadius();
+        if (ImGui::DragFloat("Radius (m)", &radius, CURRENT_LOOP_RADIUS_STEP, MIN_CURRENT_LOOP_RADIUS, MAX_CURRENT_LOOP_RADIUS, "%.2f"))
+            m_tools.setCurrentLoopRadius(radius);
+
+        float current = m_tools.currentLoopCurrent();
+        if (ImGui::DragFloat("Current (A)", &current, CURRENT_LOOP_CURRENT_STEP, MIN_CURRENT_LOOP_CURRENT, MAX_CURRENT_LOOP_CURRENT, "%.2f"))
+            m_tools.setCurrentLoopCurrent(current);
+
+        int turns = m_tools.currentLoopTurns();
+        if (ImGui::DragInt("Turns", &turns, 1.0f, MIN_CURRENT_LOOP_TURNS, MAX_CURRENT_LOOP_TURNS))
+            m_tools.setCurrentLoopTurns(turns);
+    }
     else if (m_mode == Mode::Fields && tool == ToolType::FieldProbe)
     {
         const Vec2 field = m_world.electricFieldAt(m_mouseWorldMeters);
@@ -537,15 +563,15 @@ void App::drawToolSettingsPanel(float toolsPanelWidth)
     }
     else if (tool == ToolType::Move)
     {
-        ImGui::Text("Left Click and drag to move a charge, particle, wire, loop, or Gaussian surface");
+        ImGui::Text("Left Click and drag to move a charge, particle, wire, loop, current loop, or Gaussian surface");
     }
     else if (tool == ToolType::Erase)
     {
-        ImGui::Text("Left Click to erase a charge, particle, wire, loop, or Gaussian surface");
+        ImGui::Text("Left Click to erase a charge, particle, wire, loop, current loop, or Gaussian surface");
     }
     else if (tool == ToolType::Select)
     {
-        ImGui::Text("Left Click to select a charge, particle, wire, loop, or Gaussian surface");
+        ImGui::Text("Left Click to select a charge, particle, wire, loop, current loop, or Gaussian surface");
     }
     else
     {
@@ -709,6 +735,27 @@ void App::drawPropertiesPanel()
         }
         if (ImGui::Button("Clear EMF Trace"))
             loop->emfTrace.clear();
+
+        ImGui::End();
+    }
+    else if (m_selectedKind == EntityKind::CurrentLoop)
+    {
+        CurrentLoop *loop = m_world.findCurrentLoop(m_selectedId);
+        if (!loop)
+        {
+            m_selectedKind = EntityKind::None;
+            return;
+        }
+
+        ImGui::SetNextWindowPos(ImVec2(10.0f, 300.0f), ImGuiCond_Once);
+        ImGui::Begin("Properties", nullptr, kMovableFlags);
+        ImGui::Text("Current Loop");
+        ImGui::Separator();
+
+        ImGui::DragFloat("Radius (m)", &loop->radius, CURRENT_LOOP_RADIUS_STEP, MIN_CURRENT_LOOP_RADIUS, MAX_CURRENT_LOOP_RADIUS, "%.2f");
+        ImGui::DragFloat("Current (A)", &loop->current, CURRENT_LOOP_CURRENT_STEP, MIN_CURRENT_LOOP_CURRENT, MAX_CURRENT_LOOP_CURRENT, "%.2f");
+        ImGui::DragInt("Turns", &loop->turns, 1.0f, MIN_CURRENT_LOOP_TURNS, MAX_CURRENT_LOOP_TURNS);
+        ImGui::Text("Position: %s m", loop->center.toString().c_str());
 
         ImGui::End();
     }

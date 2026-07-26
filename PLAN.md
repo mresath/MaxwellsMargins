@@ -47,7 +47,7 @@ src/
 ├── engine/                     Solver (shared DOPRI5-style integrator),
 │                               FieldMath (Coulomb/Biot-Savart/Lorentz)
 ├── electrostatics/             PointCharge, FieldSampler, EquipotentialTracer, GaussianSurface
-├── magnetism/                  UniformBField, CurrentWire, ChargedParticle
+├── magnetism/                  UniformBField, CurrentWire, CurrentLoop, ChargedParticle
 ├── induction/                  MovingLoop (also drives the generator demo via angularVelocity)
 ├── circuits/                   Component (+Resistor/Capacitor/Battery/Switch/Probe), CircuitGraph
 ├── math/                       Vec2.hpp, Util.hpp
@@ -97,6 +97,7 @@ Circuits and cross-cutting polish (Phases 5-6) remain.
 - `engine/FieldMath::lorentzForce`; particle motion integrated via `engine/Solver` -> circular/helical trajectories in a uniform B field, with trajectory path traces.
 - `CurrentWire` placement; field via `biotSavartField` (right-hand rule visualization).
 - `forceBetweenWires` + on-canvas force readout for two parallel wires.
+- `CurrentLoop` placement: a stationary multi-turn coil, field via `currentLoopField` (added post-Phase-4, alongside `MovingLoop`'s own `turns`).
 - Preset: `scenes::loadParticleInUniformB`.
 - Acceptance: a charged particle in a uniform B field traces a circle/helix of the physically-correct radius (`r = mv/qB`); two anti/parallel current wires attract/repel per the right sign and magnitude.
 
@@ -134,6 +135,7 @@ Circuits and cross-cutting polish (Phases 5-6) remain.
 - **Magnetism scale**: the true mu_0 makes wire/particle-generated fields negligible at electrostatics' charge scale, so `permeabilityFactor` is a user-adjustable multiplier (default high, "1x" button for real physics) rather than a baked-in fudge - capped so a particle at closest wire approach can't exceed the fixed-step solver's cyclotron stability limit. Charge and mass move together (same ratio drives cyclotron frequency) so this stays stable.
 - **No separate `Generator` class**: the planned `Generator` wrapper only added a `motorMode` flag that needs Circuits (not built yet) to mean anything, so its behavior was folded directly into `MovingLoop` (a nonzero `angularVelocity` alone gives the generator demo) rather than shipping an unusable field.
 - **Current-flow display is a Renderer-level tri-state** (`CurrentFlowDisplay`: Off/Conventional/Electron), not a per-domain flag, so magnetism's wires, induction's loops, and circuits' wires (once built) all animate from the same Settings toggle and drawing helpers.
+- **`CurrentLoop`'s own field uses the on-axis circular-loop formula radially** (exact at the loop's center, an approximation everywhere else) rather than the true off-axis field, which needs elliptic integrals - consistent with the project's other pragmatic field simplifications (e.g. `movingChargeField`'s point-charge Biot-Savart). `turns` on both `CurrentLoop` and `MovingLoop` models a multi-turn coil as ampere-turns/flux-linkage (`turns * current` or `turns * flux`) rather than simulating each winding.
 
 ## Checklist
 

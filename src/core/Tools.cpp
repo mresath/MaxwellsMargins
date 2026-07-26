@@ -10,7 +10,8 @@ Tools::Tools()
     : m_activeTool(ToolType::Select), m_chargeMagnitude(DEFAULT_CHARGE_MAGNITUDE), m_gaussianRadius(GAUSSIAN_SURFACE_DEFAULT_RADIUS),
       m_particleChargeMagnitude(DEFAULT_PARTICLE_CHARGE_MAGNITUDE), m_particleChargePositive(true), m_particleMass(DEFAULT_PARTICLE_MASS), m_particleSpeed(DEFAULT_PARTICLE_SPEED),
       m_wireCurrent(DEFAULT_WIRE_CURRENT), m_wireDragActive(false), m_wireDragStart(0.0f, 0.0f),
-      m_loopRadius(DEFAULT_LOOP_RADIUS), m_loopTurns(DEFAULT_LOOP_TURNS), m_loopAngularVelocity(DEFAULT_LOOP_ANGULAR_VELOCITY)
+      m_loopRadius(DEFAULT_LOOP_RADIUS), m_loopTurns(DEFAULT_LOOP_TURNS), m_loopAngularVelocity(DEFAULT_LOOP_ANGULAR_VELOCITY),
+      m_currentLoopRadius(DEFAULT_CURRENT_LOOP_RADIUS), m_currentLoopCurrent(DEFAULT_CURRENT_LOOP_CURRENT), m_currentLoopTurns(DEFAULT_CURRENT_LOOP_TURNS)
 {
 }
 
@@ -48,6 +49,13 @@ int Tools::loopTurns() const { return m_loopTurns; }
 void Tools::setLoopTurns(int turns) { m_loopTurns = turns; }
 float Tools::loopAngularVelocity() const { return m_loopAngularVelocity; }
 void Tools::setLoopAngularVelocity(float angularVelocity) { m_loopAngularVelocity = angularVelocity; }
+
+float Tools::currentLoopRadius() const { return m_currentLoopRadius; }
+void Tools::setCurrentLoopRadius(float radius) { m_currentLoopRadius = radius; }
+float Tools::currentLoopCurrent() const { return m_currentLoopCurrent; }
+void Tools::setCurrentLoopCurrent(float current) { m_currentLoopCurrent = current; }
+int Tools::currentLoopTurns() const { return m_currentLoopTurns; }
+void Tools::setCurrentLoopTurns(int turns) { m_currentLoopTurns = turns; }
 
 bool Tools::isDraggingWire() const { return m_wireDragActive; }
 Vec2 Tools::wireDragStart() const { return m_wireDragStart; }
@@ -93,6 +101,9 @@ void Tools::onClick(const Vec2 &worldPos, World &world)
         world.loops().push_back(loop);
         break;
     }
+    case ToolType::PlaceCurrentLoop:
+        world.currentLoops().emplace_back(worldPos, m_currentLoopRadius, m_currentLoopCurrent, m_currentLoopTurns, world.allocateEntityId());
+        break;
     case ToolType::DrawGaussianSurface:
         world.gaussianSurfaces().emplace_back(worldPos, m_gaussianRadius, world.allocateEntityId());
         break;

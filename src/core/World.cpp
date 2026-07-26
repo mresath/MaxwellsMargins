@@ -15,6 +15,7 @@ void World::reset()
 {
     m_charges.clear();
     m_wires.clear();
+    m_currentLoops.clear();
     m_particles.clear();
     m_loops.clear();
     m_gaussianSurfaces.clear();
@@ -84,6 +85,7 @@ float World::simTime() const { return m_simTime; }
 
 std::vector<PointCharge> &World::charges() { return m_charges; }
 std::vector<CurrentWire> &World::wires() { return m_wires; }
+std::vector<CurrentLoop> &World::currentLoops() { return m_currentLoops; }
 std::vector<ChargedParticle> &World::particles() { return m_particles; }
 std::vector<MovingLoop> &World::loops() { return m_loops; }
 std::vector<GaussianSurface> &World::gaussianSurfaces() { return m_gaussianSurfaces; }
@@ -91,6 +93,7 @@ UniformBField &World::uniformField() { return m_uniformField; }
 
 const std::vector<PointCharge> &World::charges() const { return m_charges; }
 const std::vector<CurrentWire> &World::wires() const { return m_wires; }
+const std::vector<CurrentLoop> &World::currentLoops() const { return m_currentLoops; }
 const std::vector<ChargedParticle> &World::particles() const { return m_particles; }
 const std::vector<MovingLoop> &World::loops() const { return m_loops; }
 const std::vector<GaussianSurface> &World::gaussianSurfaces() const { return m_gaussianSurfaces; }
@@ -115,6 +118,10 @@ EntityRef World::findEntityAt(const Vec2 &pos) const
     for (const auto &loop : m_loops)
         if ((loop.center - pos).length() <= loop.radius)
             return {EntityKind::Loop, loop.id};
+
+    for (const auto &currentLoop : m_currentLoops)
+        if ((currentLoop.center - pos).length() <= currentLoop.radius)
+            return {EntityKind::CurrentLoop, currentLoop.id};
 
     for (const auto &surface : m_gaussianSurfaces)
         if ((surface.center - pos).length() <= surface.radius)
@@ -180,6 +187,17 @@ void World::removeEntity(EntityKind kind, int id)
             }
         }
     }
+    else if (kind == EntityKind::CurrentLoop)
+    {
+        for (std::size_t i = 0; i < m_currentLoops.size(); ++i)
+        {
+            if (m_currentLoops[i].id == id)
+            {
+                m_currentLoops.erase(m_currentLoops.begin() + i);
+                return;
+            }
+        }
+    }
 }
 
 PointCharge *World::findCharge(int id)
@@ -222,6 +240,14 @@ MovingLoop *World::findLoop(int id)
     return nullptr;
 }
 
+CurrentLoop *World::findCurrentLoop(int id)
+{
+    for (auto &loop : m_currentLoops)
+        if (loop.id == id)
+            return &loop;
+    return nullptr;
+}
+
 Vec2 World::electricFieldAt(const Vec2 &point, int excludeParticleId) const
 {
     Vec2 total = FieldMath::coulombField(point, m_charges);
@@ -244,6 +270,7 @@ float World::magneticFieldAt(const Vec2 &point, int excludeParticleId) const
 {
     float total = m_uniformField.enabled ? m_uniformField.strength : 0.0f;
     total += FieldMath::biotSavartField(point, m_wires, m_permeabilityFactor);
+    total += FieldMath::currentLoopField(point, m_currentLoops, m_permeabilityFactor);
     for (const auto &particle : m_particles)
         if (particle.id != excludeParticleId)
             total += FieldMath::movingChargeField(point, particle.position, particle.velocity, particle.charge, m_permeabilityFactor);

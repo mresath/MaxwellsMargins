@@ -76,6 +76,8 @@ UI panels: `Stats`, `Tools`, `Tool Settings`, `Properties` (appears once a charg
 - A particle's mass field has quick "e-"/"p+" buttons for the real electron/proton mass
 - Since the real magnetic constant makes these effects negligible at electrostatics' charge scale, a `Permeability Factor` setting (default high, "1x" button for real physics) scales it up - the same idea as electrostatics' unrealistically large default charge
 - Current-carrying wires animate a `Current Flow` setting (Off/Conventional/Electron): Conventional shows arrow markers moving the signed-current direction, Electron shows charge-colored dots drifting the physically-opposite way
+- A `Current Loop` tool places a stationary circular coil with its own adjustable current and turn/loop count; its field peaks at the coil's center and animates the same `Current Flow` markers as wires
+- Both loop types' turn count is drawn as concentric rings (capped to stay legible at high counts), not just a number in a panel
 
 ## Induction
 
