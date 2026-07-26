@@ -30,4 +30,8 @@ float forceBetweenWires(float current1, float current2, float separation, float 
 float movingChargeField(const Vec2 &point, const Vec2 &sourcePosition, const Vec2 &sourceVelocity, float sourceCharge, float permeabilityFactor);
 
 Vec2 lorentzForce(float charge, const Vec2 &velocity, const Vec2 &electricField, float bFieldStrength);
+
+// Flux through a loop small enough that the field is ~uniform across it, sampled at its
+// center; rotationAngle is the angle between the loop's normal and the out-of-page axis.
+float loopFlux(float bFieldAtCenter, float loopArea, float rotationAngle);
 } // namespace FieldMath

@@ -20,12 +20,13 @@ A physics simulator/playground with the following features:
   - Uniform Magnetic Fields
   - Charged Particles (Lorentz Force, Mutual E/B Interaction)
   - Current-Carrying Wires (Force Between Wires)
+  - Conventional Current / Electron Flow Visualization
+- Induction
+  - Moving & Rotating Loops (Faraday's/Lenz's Laws)
+  - Generator Demo
 - Circuits (In Development)
   - Resistors, Capacitors, Batteries, Switches
   - Ammeter/Voltmeter Probes
-- Induction (In Development)
-  - Moving Loops (Faraday's Law)
-  - Generator Demo
 - Real Quantities & Units
   - SI throughout (Coulombs, N/C, Volts)
   - The minor and major gridlines represent 1m and 5m respectively
@@ -53,7 +54,7 @@ Not yet released. To build from source, see [Building](#building) below.
 - `Esc`: toggle settings
 - `P`: pause/resume simulation
 
-UI panels: `Stats`, `Tools`, `Tool Settings`, `Properties` (appears once a charge, particle, wire, or Gaussian surface is selected), `Settings` (`Esc`, holds the mode tabs, presets, and overlay toggles)
+UI panels: `Stats`, `Tools`, `Tool Settings`, `Properties` (appears once a charge, particle, wire, loop, or Gaussian surface is selected), `Settings` (`Esc`, holds the mode tabs, presets, and overlay toggles)
 
 ## Electrostatics
 
@@ -74,11 +75,20 @@ UI panels: `Stats`, `Tools`, `Tool Settings`, `Properties` (appears once a charg
 - Two roughly-parallel wires get a live attract/repel force readout
 - A particle's mass field has quick "e-"/"p+" buttons for the real electron/proton mass
 - Since the real magnetic constant makes these effects negligible at electrostatics' charge scale, a `Permeability Factor` setting (default high, "1x" button for real physics) scales it up - the same idea as electrostatics' unrealistically large default charge
+- Current-carrying wires animate a `Current Flow` setting (Off/Conventional/Electron): Conventional shows arrow markers moving the signed-current direction, Electron shows charge-colored dots drifting the physically-opposite way
+
+## Induction
+
+- A `Moving Loop` tool places a conducting loop that can translate and/or rotate through the magnetic field; its induced EMF (Faraday's law) is computed from the flux sampled at its center each step
+- Rotation is drawn as the loop foreshortening into an ellipse as it tilts out of the page, the classic AC-generator picture; a nonzero angular velocity alone reproduces the generator demo, no separate rotating-loop setup needed
+- The induced current's sign drives the same `Current Flow` markers used for wires, so Lenz's law direction is visible directly rather than via a separate indicator
+- The Properties panel plots a selected loop's induced EMF live over time
 
 ## Presets
 
 - **Dipole Field**: two equal-and-opposite point charges, for exploring field vector/line and equipotential behavior around a classic charge configuration
 - **Particle in Uniform B Field**: a charged particle tracing a circular path through a uniform magnetic field
+- **Generator Demo**: a multi-turn loop spinning in a uniform field, producing the classic sinusoidal generator EMF
 - **Parallel Plate Capacitor** (In Development): a battery-charged capacitor demo for circuits mode
 - **Simple RC Circuit** (In Development): a battery, resistor, and capacitor for exploring charge/discharge transients
 

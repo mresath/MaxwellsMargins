@@ -61,6 +61,13 @@ public:
     float wireCurrent() const;
     void setWireCurrent(float current);
 
+    float loopRadius() const;
+    void setLoopRadius(float radius);
+    int loopTurns() const;
+    void setLoopTurns(int turns);
+    float loopAngularVelocity() const;
+    void setLoopAngularVelocity(float angularVelocity);
+
     // A wire needs two points, so it's placed by click-drag (start on press, end on
     // release) rather than the single-click Tools::onClick path.
     bool isDraggingWire() const;
@@ -81,4 +88,8 @@ private:
     float m_wireCurrent;
     bool m_wireDragActive;
     Vec2 m_wireDragStart;
+
+    float m_loopRadius;
+    int m_loopTurns;
+    float m_loopAngularVelocity;
 };

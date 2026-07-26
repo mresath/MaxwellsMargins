@@ -88,6 +88,13 @@
 #define CURRENT_WIRE_COLOR sf::Color(230, 230, 230, 255)
 #define TRAJECTORY_TRACE_COLOR sf::Color(100, 150, 255, 255)
 
+// Animated charge-carrier markers along a wire/loop (Renderer::CurrentFlowDisplay) - shared
+// by magnetism's wires, induction's loops, and (once built) circuits' wires alike.
+#define CURRENT_FLOW_MARKER_SPACING 0.35f     // meters between markers along the path
+#define CURRENT_FLOW_MARKER_RADIUS 0.05f      // meters, drawn radius of each marker
+#define CURRENT_FLOW_MAX_SPEED 3.0f           // meters/second, marker speed at saturation
+#define CURRENT_FLOW_SPEED_SATURATION 5.0f    // A, half-saturation point for marker-speed scaling
+
 #define B_FIELD_MARKER_SPACING 1.0f        // meters between sampled into/out-of-page markers
 #define B_FIELD_MARKER_MIN_MAGNITUDE 0.02f // T, below this the field is too weak to draw
 #define B_FIELD_MARKER_SATURATION 2.0f     // T, half-saturation point for marker size scaling
@@ -125,9 +132,29 @@
 #define WIRE_PARALLEL_DOT_THRESHOLD 0.98f // |dot of unit directions| above this counts as "parallel" for the force readout
 
 // INDUCTION CONFIGURATION
+#define MIN_LOOP_RADIUS 0.3f     // meters
+#define MAX_LOOP_RADIUS 3.0f     // meters
+#define DEFAULT_LOOP_RADIUS 1.0f // meters
+#define LOOP_RADIUS_STEP 0.05f   // meters, Tool Settings drag-slider step
+
+#define MIN_LOOP_TURNS 1
+#define MAX_LOOP_TURNS 100
+#define DEFAULT_LOOP_TURNS 1
+
+#define MIN_LOOP_ANGULAR_VELOCITY -20.0f   // rad/s
+#define MAX_LOOP_ANGULAR_VELOCITY 20.0f    // rad/s
+#define DEFAULT_LOOP_ANGULAR_VELOCITY 0.0f // rad/s
+#define LOOP_ANGULAR_VELOCITY_STEP 0.1f    // rad/s, Tool Settings drag-slider step
+
 #define LOOP_COLOR sf::Color(230, 230, 230, 255)
 #define INDUCED_EMF_ARROW_COLOR sf::Color(255, 210, 80, 255)
-#define LENZ_INDICATOR_COLOR sf::Color(120, 220, 160, 255)
+
+// A loop has no defined resistance yet (that's a circuits concept), so its current-flow
+// marker speed saturates against induced EMF directly rather than an Amp value.
+#define CURRENT_FLOW_EMF_SATURATION 2.0f // V, half-saturation point for loop marker-speed scaling
+
+#define MIN_DISPLAYED_EMF 1e-6f   // V, below this the direction indicator/label is hidden as noise
+#define EMF_TRACE_MAX_POINTS 300u // cap on stored EMF-trace samples before the oldest is dropped
 
 // CIRCUITS CONFIGURATION
 #define MIN_RESISTANCE 1.0f       // Ohm
@@ -150,7 +177,6 @@
 #define WIRE_COLOR sf::Color(230, 230, 230, 255)
 #define COMPONENT_COLOR sf::Color(200, 200, 200, 255)
 #define PROBE_COLOR sf::Color(255, 210, 80, 255)
-#define CURRENT_FLOW_COLOR sf::Color(80, 180, 255, 255)
 
 // LOGGING & GRAPHING CONFIGURATION
 #define LOG_DIRECTORY "logs"

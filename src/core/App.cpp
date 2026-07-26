@@ -10,6 +10,7 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <cfloat>
 #include <cmath>
 #include <optional>
 #include <stdexcept>
@@ -89,6 +90,8 @@ const char *iconTextureFor(ToolType tool)
         return "charged_particle";
     case ToolType::PlaceCurrentWire:
         return "current_wire";
+    case ToolType::PlaceMovingLoop:
+        return "moving_loop";
     default:
         return "blank";
     }
@@ -134,7 +137,7 @@ App::App()
 
     m_window.setFramerateLimit(MAX_FPS);
 
-    for (const char *name : {"cursor", "hand", "trash", "positive_charge", "negative_charge", "gaussian_surface", "field_probe", "charged_particle", "current_wire"})
+    for (const char *name : {"cursor", "hand", "trash", "positive_charge", "negative_charge", "gaussian_surface", "field_probe", "charged_particle", "current_wire", "moving_loop"})
     {
         sf::Texture texture;
         texture.setSmooth(true);
@@ -267,6 +270,11 @@ void App::processEvents()
                         wire->start += delta;
                         wire->end += delta;
                     }
+                }
+                else if (m_grabbedKind == EntityKind::Loop)
+                {
+                    if (MovingLoop *loop = m_world.findLoop(m_grabbedId))
+                        loop->center = m_mouseWorldMeters;
                 }
 
                 if (m_isPanning)
@@ -495,6 +503,24 @@ void App::drawToolSettingsPanel(float toolsPanelWidth)
         if (ImGui::DragFloat("Current (A)", &current, WIRE_CURRENT_STEP, MIN_WIRE_CURRENT, MAX_WIRE_CURRENT, "%.2f"))
             m_tools.setWireCurrent(current);
     }
+    else if (m_mode == Mode::Fields && tool == ToolType::PlaceMovingLoop)
+    {
+        ImGui::Text("Left Click to place a moving loop");
+        ImGui::Separator();
+
+        float radius = m_tools.loopRadius();
+        if (ImGui::DragFloat("Radius (m)", &radius, LOOP_RADIUS_STEP, MIN_LOOP_RADIUS, MAX_LOOP_RADIUS, "%.2f"))
+            m_tools.setLoopRadius(radius);
+
+        int turns = m_tools.loopTurns();
+        if (ImGui::DragInt("Turns", &turns, 1.0f, MIN_LOOP_TURNS, MAX_LOOP_TURNS))
+            m_tools.setLoopTurns(turns);
+
+        float angularVelocity = m_tools.loopAngularVelocity();
+        if (ImGui::DragFloat("Angular Velocity (rad/s)", &angularVelocity, LOOP_ANGULAR_VELOCITY_STEP, MIN_LOOP_ANGULAR_VELOCITY, MAX_LOOP_ANGULAR_VELOCITY, "%.2f"))
+            m_tools.setLoopAngularVelocity(angularVelocity);
+        ImGui::TextDisabled("Set translational velocity after placing, via Properties");
+    }
     else if (m_mode == Mode::Fields && tool == ToolType::FieldProbe)
     {
         const Vec2 field = m_world.electricFieldAt(m_mouseWorldMeters);
@@ -511,15 +537,15 @@ void App::drawToolSettingsPanel(float toolsPanelWidth)
     }
     else if (tool == ToolType::Move)
     {
-        ImGui::Text("Left Click and drag to move a charge, particle, wire, or Gaussian surface");
+        ImGui::Text("Left Click and drag to move a charge, particle, wire, loop, or Gaussian surface");
     }
     else if (tool == ToolType::Erase)
     {
-        ImGui::Text("Left Click to erase a charge, particle, wire, or Gaussian surface");
+        ImGui::Text("Left Click to erase a charge, particle, wire, loop, or Gaussian surface");
     }
     else if (tool == ToolType::Select)
     {
-        ImGui::Text("Left Click to select a charge, particle, wire, or Gaussian surface");
+        ImGui::Text("Left Click to select a charge, particle, wire, loop, or Gaussian surface");
     }
     else
     {
@@ -651,6 +677,41 @@ void App::drawPropertiesPanel()
 
         ImGui::End();
     }
+    else if (m_selectedKind == EntityKind::Loop)
+    {
+        MovingLoop *loop = m_world.findLoop(m_selectedId);
+        if (!loop)
+        {
+            m_selectedKind = EntityKind::None;
+            return;
+        }
+
+        ImGui::SetNextWindowPos(ImVec2(10.0f, 300.0f), ImGuiCond_Once);
+        ImGui::Begin("Properties", nullptr, kMovableFlags);
+        ImGui::Text("Moving Loop");
+        ImGui::Separator();
+
+        ImGui::DragFloat("Radius (m)", &loop->radius, LOOP_RADIUS_STEP, MIN_LOOP_RADIUS, MAX_LOOP_RADIUS, "%.2f");
+        ImGui::DragInt("Turns", &loop->turns, 1.0f, MIN_LOOP_TURNS, MAX_LOOP_TURNS);
+
+        float velocity[2] = {loop->velocity.x, loop->velocity.y};
+        if (ImGui::DragFloat2("Velocity (m/s)", velocity, 0.1f))
+            loop->velocity = Vec2(velocity[0], velocity[1]);
+        ImGui::DragFloat("Angular Velocity (rad/s)", &loop->angularVelocity, LOOP_ANGULAR_VELOCITY_STEP, MIN_LOOP_ANGULAR_VELOCITY, MAX_LOOP_ANGULAR_VELOCITY, "%.2f");
+
+        ImGui::Text("Position: %s m", loop->center.toString().c_str());
+        ImGui::Text("Induced EMF: %.4g V", loop->inducedEMF);
+
+        if (!loop->emfTrace.empty())
+        {
+            const std::vector<float> trace(loop->emfTrace.begin(), loop->emfTrace.end());
+            ImGui::PlotLines("EMF (V)", trace.data(), static_cast<int>(trace.size()), 0, nullptr, FLT_MAX, FLT_MAX, ImVec2(0.0f, 60.0f));
+        }
+        if (ImGui::Button("Clear EMF Trace"))
+            loop->emfTrace.clear();
+
+        ImGui::End();
+    }
 }
 
 void App::drawSettingsPanel()
@@ -671,6 +732,16 @@ void App::drawSettingsPanel()
         ImGui::Checkbox("Field Lines", &m_renderer.showFieldLines);
         ImGui::Checkbox("Equipotential Lines", &m_renderer.showEquipotentials);
         ImGui::Checkbox("Magnetic Field", &m_renderer.showMagneticField);
+        ImGui::Text("Current Flow:");
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Off", m_renderer.currentFlowDisplay == CurrentFlowDisplay::Off))
+            m_renderer.currentFlowDisplay = CurrentFlowDisplay::Off;
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Conventional", m_renderer.currentFlowDisplay == CurrentFlowDisplay::Conventional))
+            m_renderer.currentFlowDisplay = CurrentFlowDisplay::Conventional;
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Electron", m_renderer.currentFlowDisplay == CurrentFlowDisplay::Electron))
+            m_renderer.currentFlowDisplay = CurrentFlowDisplay::Electron;
         ImGui::Separator();
         ImGui::Checkbox("Uniform B Field", &m_world.uniformField().enabled);
         if (m_world.uniformField().enabled)
@@ -686,6 +757,8 @@ void App::drawSettingsPanel()
             Presets::loadDipoleField(m_world);
         if (ImGui::Button("Load Particle in Uniform B Preset"))
             Presets::loadParticleInUniformB(m_world);
+        if (ImGui::Button("Load Generator Demo Preset"))
+            Presets::loadGeneratorDemo(m_world);
         if (ImGui::Button("Reset Simulation"))
         {
             m_world.reset();

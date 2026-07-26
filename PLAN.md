@@ -48,7 +48,7 @@ src/
 │                               FieldMath (Coulomb/Biot-Savart/Lorentz)
 ├── electrostatics/             PointCharge, FieldSampler, EquipotentialTracer, GaussianSurface
 ├── magnetism/                  UniformBField, CurrentWire, ChargedParticle
-├── induction/                  MovingLoop, Generator
+├── induction/                  MovingLoop (also drives the generator demo via angularVelocity)
 ├── circuits/                   Component (+Resistor/Capacitor/Battery/Switch/Probe), CircuitGraph
 ├── math/                       Vec2.hpp, Util.hpp
 ├── render/                     Renderer (grid, vectors, field lines, equipotentials, schematic drawing)
@@ -63,9 +63,10 @@ under `vendor/SFML`).
 
 ## Current status
 
-Phases 0-3 are complete: app shell, electrostatics, and magnetism (uniform field, current
+Phases 0-4 are complete: app shell, electrostatics, magnetism (uniform field, current
 wires, charged particles, including their mutual E/B interaction via `World`'s global-field
-query methods). Circuits, induction, and cross-cutting polish (Phases 4-6) remain.
+query methods), and induction (moving/rotating loops, Faraday/Lenz, the generator demo).
+Circuits and cross-cutting polish (Phases 5-6) remain.
 
 ## Phases
 
@@ -101,10 +102,11 @@ query methods). Circuits, induction, and cross-cutting polish (Phases 4-6) remai
 
 ### Phase 4 - Induction
 
-- `MovingLoop`: flux computed from enclosed field x area x cos(theta); `inducedEMF = -dPhi/dt` (Faraday's law), numerically differentiated or solver-integrated.
-- Lenz's-law direction indicator (arrow/highlight showing induced current direction opposing the flux change).
-- `Generator`: rotating loop driven at a fixed angular velocity, EMF plotted live; motor-mode stretch goal (loop driven by circuit current instead).
-- Acceptance: moving a loop through the B-field region shows EMF spikes with the correct sign relative to motion direction; the generator demo produces a sinusoidal EMF matching `EMF = NBA*omega*sin(omega*t)`.
+- `MovingLoop`: flux computed from enclosed field x area x cos(theta); `inducedEMF = -N*dPhi/dt` (Faraday's law), numerically differentiated each fixed step from the field sampled at the loop's center (small-loop approximation, consistent with `World`'s other single-point field queries).
+- Lenz's-law direction indicator: the shared current-flow-marker animation (see below) circulating around the loop already encodes direction via `inducedEMF`'s sign, so no separate arrow is needed.
+- Generator demo (`scenes::loadGeneratorDemo`): a multi-turn `MovingLoop` with a fixed `angularVelocity` in a uniform field, its rotation and EMF both driven by `MovingLoop`'s existing fields - no separate `Generator` class needed. Motor mode (loop driven by circuit current) remains a stretch goal, deferred until Circuits exists.
+- Current-flow visualization: `Renderer::CurrentFlowDisplay` (Off/Conventional/Electron), a Settings toggle shared by wires and loops now, and by circuits once built. Conventional draws small arrow chevrons in the signed-current direction (the textbook abstraction); Electron draws charge-colored dots drifting the physically-opposite way (the actual carriers).
+- Acceptance: moving a loop through a non-uniform field region (e.g. near a wire) shows EMF spikes with the correct sign relative to motion direction; the generator demo produces a sinusoidal EMF matching `EMF = NBA*omega*sin(omega*t)`. Verified interactively (generator demo rotation + live EMF trace, current-flow arrows/dots on wires and loops).
 
 ### Phase 5 - Circuits
 
@@ -130,6 +132,8 @@ query methods). Circuits, induction, and cross-cutting polish (Phases 4-6) remai
 - **Circuits solve method**: modified nodal analysis (MNA) rather than mesh/loop analysis, since it generalizes better to arbitrary topologies added incrementally by a user (no need to detect independent loops).
 - **Inductors**: modeled as a `Component` in `circuits/` (RL behavior is circuit-local), separate from `induction/`'s spatial moving-loop EMF generation - these are physically distinct even though both are "induction."
 - **Magnetism scale**: the true mu_0 makes wire/particle-generated fields negligible at electrostatics' charge scale, so `permeabilityFactor` is a user-adjustable multiplier (default high, "1x" button for real physics) rather than a baked-in fudge - capped so a particle at closest wire approach can't exceed the fixed-step solver's cyclotron stability limit. Charge and mass move together (same ratio drives cyclotron frequency) so this stays stable.
+- **No separate `Generator` class**: the planned `Generator` wrapper only added a `motorMode` flag that needs Circuits (not built yet) to mean anything, so its behavior was folded directly into `MovingLoop` (a nonzero `angularVelocity` alone gives the generator demo) rather than shipping an unusable field.
+- **Current-flow display is a Renderer-level tri-state** (`CurrentFlowDisplay`: Off/Conventional/Electron), not a per-domain flag, so magnetism's wires, induction's loops, and circuits' wires (once built) all animate from the same Settings toggle and drawing helpers.
 
 ## Checklist
 
@@ -176,12 +180,12 @@ query methods). Circuits, induction, and cross-cutting polish (Phases 4-6) remai
 
 ### Phase 4 - Induction
 
-- [ ] `MovingLoop` flux computation (`B x A x cos(theta)`)
-- [ ] `inducedEMF = -dPhi/dt` (Faraday's law)
-- [ ] Lenz's-law direction indicator
-- [ ] `Generator`: rotating loop at fixed angular velocity, EMF plotted live
+- [x] `MovingLoop` flux computation (`B x A x cos(theta)`)
+- [x] `inducedEMF = -N*dPhi/dt` (Faraday's law)
+- [x] Lenz's-law direction indicator (via the current-flow marker animation)
+- [x] Generator demo: rotating loop at fixed angular velocity, EMF plotted live (Properties panel)
 - [ ] Stretch goal: motor mode (loop driven by circuit current)
-- [ ] Acceptance: EMF sign matches motion direction; generator EMF matches `EMF = NBA*omega*sin(omega*t)`
+- [x] Acceptance: EMF sign matches motion direction; generator EMF matches `EMF = NBA*omega*sin(omega*t)`. Verified interactively.
 
 ### Phase 5 - Circuits
 

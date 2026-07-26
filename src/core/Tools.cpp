@@ -3,11 +3,14 @@
 #include "Config.hpp"
 #include "circuits/CircuitGraph.hpp"
 #include "core/World.hpp"
+#include "engine/FieldMath.hpp"
+#include "induction/MovingLoop.hpp"
 
 Tools::Tools()
     : m_activeTool(ToolType::Select), m_chargeMagnitude(DEFAULT_CHARGE_MAGNITUDE), m_gaussianRadius(GAUSSIAN_SURFACE_DEFAULT_RADIUS),
       m_particleChargeMagnitude(DEFAULT_PARTICLE_CHARGE_MAGNITUDE), m_particleChargePositive(true), m_particleMass(DEFAULT_PARTICLE_MASS), m_particleSpeed(DEFAULT_PARTICLE_SPEED),
-      m_wireCurrent(DEFAULT_WIRE_CURRENT), m_wireDragActive(false), m_wireDragStart(0.0f, 0.0f)
+      m_wireCurrent(DEFAULT_WIRE_CURRENT), m_wireDragActive(false), m_wireDragStart(0.0f, 0.0f),
+      m_loopRadius(DEFAULT_LOOP_RADIUS), m_loopTurns(DEFAULT_LOOP_TURNS), m_loopAngularVelocity(DEFAULT_LOOP_ANGULAR_VELOCITY)
 {
 }
 
@@ -38,6 +41,13 @@ void Tools::setParticleSpeed(float speed) { m_particleSpeed = speed; }
 
 float Tools::wireCurrent() const { return m_wireCurrent; }
 void Tools::setWireCurrent(float current) { m_wireCurrent = current; }
+
+float Tools::loopRadius() const { return m_loopRadius; }
+void Tools::setLoopRadius(float radius) { m_loopRadius = radius; }
+int Tools::loopTurns() const { return m_loopTurns; }
+void Tools::setLoopTurns(int turns) { m_loopTurns = turns; }
+float Tools::loopAngularVelocity() const { return m_loopAngularVelocity; }
+void Tools::setLoopAngularVelocity(float angularVelocity) { m_loopAngularVelocity = angularVelocity; }
 
 bool Tools::isDraggingWire() const { return m_wireDragActive; }
 Vec2 Tools::wireDragStart() const { return m_wireDragStart; }
@@ -71,6 +81,16 @@ void Tools::onClick(const Vec2 &worldPos, World &world)
     {
         const float charge = m_particleChargePositive ? m_particleChargeMagnitude : -m_particleChargeMagnitude;
         world.particles().emplace_back(worldPos, Vec2(m_particleSpeed, 0.0f), charge, m_particleMass, world.allocateEntityId());
+        break;
+    }
+    case ToolType::PlaceMovingLoop:
+    {
+        MovingLoop loop(worldPos, m_loopRadius, m_loopTurns, world.allocateEntityId());
+        loop.angularVelocity = m_loopAngularVelocity;
+        // Seeds lastFlux with the flux the loop is actually sitting in, rather than 0, so
+        // the first update tick doesn't register a fake EMF spike from an instantaneous jump.
+        loop.lastFlux = FieldMath::loopFlux(world.magneticFieldAt(worldPos), loop.area(), loop.rotationAngle);
+        world.loops().push_back(loop);
         break;
     }
     case ToolType::DrawGaussianSurface:

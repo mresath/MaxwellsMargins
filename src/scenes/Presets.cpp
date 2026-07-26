@@ -3,6 +3,8 @@
 #include "Config.hpp"
 #include "circuits/CircuitGraph.hpp"
 #include "core/World.hpp"
+#include "engine/FieldMath.hpp"
+#include "induction/MovingLoop.hpp"
 #include "math/Util.hpp"
 #include "math/Vec2.hpp"
 
@@ -45,6 +47,18 @@ void loadParticleInUniformB(World &world)
     world.uniformField().enabled = true;
     world.uniformField().strength = DEFAULT_B_FIELD_STRENGTH;
     world.particles().emplace_back(viewCenterMeters(), Vec2(DEFAULT_PARTICLE_SPEED, 0.0f), DEFAULT_PARTICLE_CHARGE_MAGNITUDE, DEFAULT_PARTICLE_MASS, world.allocateEntityId());
+}
+
+void loadGeneratorDemo(World &world)
+{
+    world.reset();
+    world.uniformField().enabled = true;
+    world.uniformField().strength = DEFAULT_B_FIELD_STRENGTH;
+
+    MovingLoop loop(viewCenterMeters(), DEFAULT_LOOP_RADIUS, 5, world.allocateEntityId());
+    loop.angularVelocity = 2.0f;
+    loop.lastFlux = FieldMath::loopFlux(world.magneticFieldAt(loop.center), loop.area(), loop.rotationAngle);
+    world.loops().push_back(loop);
 }
 
 } // namespace Presets

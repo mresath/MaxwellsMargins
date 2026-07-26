@@ -100,21 +100,35 @@ own generated field is negligible next to electrostatics' charge scale. `permeab
 formulas above so these effects are visible - mirroring how electrostatics already pairs the
 real Coulomb's constant with an unrealistically large charge magnitude for the same reason.
 
+**Conventional current vs. electron flow**: conventional current direction is, by
+historical convention, the direction positive charge carriers would move - opposite the
+actual (negative) electrons' drift direction. `Renderer::CurrentFlowDisplay` visualizes
+this distinction directly: Conventional animates arrow markers in the signed-current
+direction (the textbook abstraction, not literal particles); Electron animates dots the
+opposite way, colored as the actual negative carriers.
+
 ## Induction
 
-**Faraday's law**: the EMF induced in a loop equals the negative rate of change of
-magnetic flux through it:
+**Faraday's law**: the EMF induced in a loop of $N$ turns equals the negative rate of
+change of magnetic flux through it:
 
 $$
-\mathcal{E} = -\frac{d\Phi_B}{dt}, \qquad \Phi_B = \vec B \cdot \vec A = BA\cos\theta
+\mathcal{E} = -N\frac{d\Phi_B}{dt}, \qquad \Phi_B = \vec B \cdot \vec A = BA\cos\theta
 $$
 
-where $\theta$ is the angle between the field and the loop's area normal. `MovingLoop`
-tracks `lastFlux` each step so `inducedEMF` can be computed from the change in flux over
-`dt`.
+where $\theta$ is `rotationAngle`, the angle between the field and the loop's area normal
+(0 = normal fully out of page), and $\Phi_B$ is the flux through a single turn. `MovingLoop`
+samples $B$ at its own center each step (the same small-loop approximation `World` already
+uses for every other field query) and tracks `lastFlux` so `inducedEMF` can be computed from
+the change in flux over `dt` - this produces an EMF spike as a translating loop crosses a
+non-uniform field region (e.g. near a wire), or a sustained EMF from a rotating loop (the
+generator demo below). A loop carries no current back into the simulation - it doesn't
+generate its own field, unlike a real closed circuit.
 
 **Lenz's law**: the induced current's direction opposes the change in flux that produced
-it (the minus sign above) - visualized as a direction indicator on the loop.
+it (the minus sign above) - visualized by `inducedEMF`'s sign driving the same animated
+current-flow markers used for wires (`Renderer::CurrentFlowDisplay`), so the direction
+indicator and the physics come from the same signed value rather than a separate arrow.
 
 **Generator demo**: a loop of $N$ turns, area $A$, rotating at constant angular velocity
 $\omega$ in a uniform field $B$ produces a sinusoidal EMF:

@@ -10,4 +10,5 @@ void loadDipoleField(World &world);
 void loadParallelPlateCapacitor(CircuitGraph &circuit);
 void loadSimpleRCCircuit(CircuitGraph &circuit);
 void loadParticleInUniformB(World &world);
+void loadGeneratorDemo(World &world);
 } // namespace Presets

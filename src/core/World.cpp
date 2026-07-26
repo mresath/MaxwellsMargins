@@ -25,7 +25,29 @@ void World::reset()
 
 void World::update(float dt)
 {
-    // TODO(Phase 4): update loop flux/EMF.
+    for (auto &loop : m_loops)
+    {
+        const float flux = FieldMath::loopFlux(magneticFieldAt(loop.center), loop.area(), loop.rotationAngle);
+        if (dt > 0.0f)
+            loop.inducedEMF = -static_cast<float>(loop.turns) * (flux - loop.lastFlux) / dt;
+        loop.lastFlux = flux;
+
+        loop.emfTrace.push_back(loop.inducedEMF);
+        if (loop.emfTrace.size() > EMF_TRACE_MAX_POINTS)
+            loop.emfTrace.pop_front();
+
+        // Kinematic (not force-driven), but still routed through the shared solver per the
+        // "single robust solver" requirement - velocity/angularVelocity are user-set constants.
+        const auto derivative = [&loop](double, const Solver::State &) -> Solver::State
+        {
+            return {loop.velocity.x, loop.velocity.y, loop.angularVelocity};
+        };
+        const Solver::State state = {loop.center.x, loop.center.y, loop.rotationAngle};
+        const Solver::State next = Solver::step(derivative, m_simTime, state, dt);
+        loop.center = Vec2(static_cast<float>(next[0]), static_cast<float>(next[1]));
+        loop.rotationAngle = static_cast<float>(next[2]);
+    }
+
     for (auto &particle : m_particles)
     {
         // Fields are re-sampled at each RK stage's position, not frozen at the step's start.
@@ -58,6 +80,8 @@ void World::update(float dt)
     m_simTime += dt;
 }
 
+float World::simTime() const { return m_simTime; }
+
 std::vector<PointCharge> &World::charges() { return m_charges; }
 std::vector<CurrentWire> &World::wires() { return m_wires; }
 std::vector<ChargedParticle> &World::particles() { return m_particles; }
@@ -87,6 +111,10 @@ EntityRef World::findEntityAt(const Vec2 &pos) const
     for (const auto &wire : m_wires)
         if (distanceToSegment(pos, wire.start, wire.end) < ENTITY_HIT_RADIUS)
             return {EntityKind::Wire, wire.id};
+
+    for (const auto &loop : m_loops)
+        if ((loop.center - pos).length() <= loop.radius)
+            return {EntityKind::Loop, loop.id};
 
     for (const auto &surface : m_gaussianSurfaces)
         if ((surface.center - pos).length() <= surface.radius)
@@ -141,6 +169,17 @@ void World::removeEntity(EntityKind kind, int id)
             }
         }
     }
+    else if (kind == EntityKind::Loop)
+    {
+        for (std::size_t i = 0; i < m_loops.size(); ++i)
+        {
+            if (m_loops[i].id == id)
+            {
+                m_loops.erase(m_loops.begin() + i);
+                return;
+            }
+        }
+    }
 }
 
 PointCharge *World::findCharge(int id)
@@ -172,6 +211,14 @@ CurrentWire *World::findWire(int id)
     for (auto &wire : m_wires)
         if (wire.id == id)
             return &wire;
+    return nullptr;
+}
+
+MovingLoop *World::findLoop(int id)
+{
+    for (auto &loop : m_loops)
+        if (loop.id == id)
+            return &loop;
     return nullptr;
 }
 

@@ -114,4 +114,9 @@ Vec2 lorentzForce(float charge, const Vec2 &velocity, const Vec2 &electricField,
     return (electricField + magneticComponent) * charge;
 }
 
+float loopFlux(float bFieldAtCenter, float loopArea, float rotationAngle)
+{
+    return bFieldAtCenter * loopArea * std::cos(rotationAngle);
+}
+
 } // namespace FieldMath

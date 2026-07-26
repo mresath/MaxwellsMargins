@@ -6,7 +6,7 @@ You can use AI for such updates, but all text should be human-reviewed.
 
 # Codebase Structure
 
-> **Status**: Phases 0-3 are implemented and interactively verified - app shell, electrostatics, and magnetism (uniform field, current wires, charged particles). Induction/circuits, and cross-cutting polish, remain - see [PLAN.md](PLAN.md) for the phased build order.
+> **Status**: Phases 0-4 are implemented and interactively verified - app shell, electrostatics, magnetism (uniform field, current wires, charged particles), and induction (moving/rotating loops, Faraday/Lenz, the generator demo). Circuits and cross-cutting polish remain - see [PLAN.md](PLAN.md) for the phased build order.
 
 ## Core Directories and Files
 
@@ -23,7 +23,7 @@ You can use AI for such updates, but all text should be human-reviewed.
 - **Contains**:
   - Window/world dimensions, grid spacing/colors, UI spacing
   - Engine settings: calculation frequency, max dt, max FPS
-  - Per-domain constants: Coulomb's constant, charge magnitude limits and the real elementary charge/electron/proton mass (electrostatics/magnetism, selectable via quick-set buttons), B-field strength and the adjustable `permeabilityFactor` limits (magnetism), resistance/capacitance/inductance/EMF limits (circuits), plus colors for charges, field vectors/lines, equipotentials, Gaussian surfaces, wires, and current-flow
+  - Per-domain constants: Coulomb's constant, charge magnitude limits and the real elementary charge/electron/proton mass (electrostatics/magnetism, selectable via quick-set buttons), B-field strength and the adjustable `permeabilityFactor` limits (magnetism), loop radius/turns/angular-velocity limits and the EMF-trace cap (induction), resistance/capacitance/inductance/EMF limits (circuits), plus colors for charges, field vectors/lines, equipotentials, Gaussian surfaces, and loops, and the shared animated current-flow-marker constants (spacing/size/speed) used by wires, loops, and (once built) circuits alike
 
 ---
 
@@ -59,13 +59,13 @@ You can use AI for such updates, but all text should be human-reviewed.
 #### `World.hpp / World.cpp`
 - **What it does**: Container for the Fields-mode scene
 - **Holds**: `PointCharge`s, `CurrentWire`s, `ChargedParticle`s, `MovingLoop`s, `GaussianSurface`s, one `UniformBField`, and a user-adjustable `permeabilityFactor` (not reset by `reset()` - a physics-realism setting, not scene content)
-- **Key methods**: `reset()`; `update(dt)` integrates each `ChargedParticle` via `engine/Solver`, re-sampling `electricFieldAt`/`magneticFieldAt` at each RK stage's position (loop flux/EMF is still `TODO(Phase 4)`); `allocateEntityId()` gives each placed entity a stable id; `findEntityAt(pos)`/`removeEntity(kind, id)`/`findCharge(id)`/`findGaussianSurface(id)`/`findParticle(id)`/`findWire(id)` are the shared hit-test/lookup used by Move/Select/Erase and the Properties panel, keyed by id (not vector index)
+- **Key methods**: `reset()`; `simTime()` (used by `Renderer` to animate current-flow markers, so they freeze correctly when paused); `update(dt)` first advances each `MovingLoop` - flux/EMF via `FieldMath::loopFlux` and a finite difference against last step's flux, then kinematic translation/rotation via `engine/Solver` (constant velocity/angularVelocity, but still routed through the shared solver per the "single robust solver" requirement) - then integrates each `ChargedParticle` via `engine/Solver`, re-sampling `electricFieldAt`/`magneticFieldAt` at each RK stage's position; `allocateEntityId()` gives each placed entity a stable id; `findEntityAt(pos)`/`removeEntity(kind, id)`/`findCharge(id)`/`findGaussianSurface(id)`/`findParticle(id)`/`findWire(id)`/`findLoop(id)` are the shared hit-test/lookup used by Move/Select/Erase and the Properties panel, keyed by id (not vector index)
 - **Global field query**: `electricFieldAt`/`electricPotentialAt`/`magneticFieldAt(point, excludeParticleId)` are the single source of truth for field values - E combines static charges and moving particles (which are E sources too); B combines the uniform field, wires, and moving particles (which generate their own field via `FieldMath::movingChargeField`). `excludeParticleId` skips a particle's own self-field when computing the force acting on it. Particle integration, the Field Probe, and visualization (`allChargeSources()`, which also expresses particles as `PointCharge`s) all route through these instead of duplicating the sums
 
 #### `Tools.hpp / Tools.cpp`
 - **What it does**: User interaction tools
 - **`ToolType` enum**: Fields-mode tools (place charge/wire/particle/loop, draw Gaussian surface, field probe) and Circuits-mode tools (place resistor/capacitor/battery/switch/wire, ammeter/voltmeter), plus shared `Select`/`Move`/`Erase` (camera pan is unconditional via right-mouse-drag, not a tool)
-- **Key methods**: `onClick(worldPos, World&)` places a `PointCharge`, `ChargedParticle`, or `GaussianSurface` at the tool's adjustable settings, or erases whatever `World::findEntityAt` hits. `beginWireDrag`/`finishWireDrag` place a `CurrentWire` from a press-drag-release gesture instead (a wire needs two points, so it doesn't go through `onClick`); switching tools mid-drag abandons it. Move and Select are handled in `App` instead (they need persistent state across frames). The `CircuitGraph&` overload is still `TODO(Phase 5)`.
+- **Key methods**: `onClick(worldPos, World&)` places a `PointCharge`, `ChargedParticle`, `MovingLoop`, or `GaussianSurface` at the tool's adjustable settings, or erases whatever `World::findEntityAt` hits - a placed loop seeds `lastFlux` from the field it's actually sitting in, so the first update tick doesn't register a fake EMF spike. `beginWireDrag`/`finishWireDrag` place a `CurrentWire` from a press-drag-release gesture instead (a wire needs two points, so it doesn't go through `onClick`); switching tools mid-drag abandons it. Move and Select are handled in `App` instead (they need persistent state across frames). The `CircuitGraph&` overload is still `TODO(Phase 5)`.
 
 #### `UI.hpp`
 - **What it does**: View/window helpers (pan, zoom, resize, letterboxing) - `handleResize`/`handleZoom`/`handlePanMouse`/`calculateLetterboxViewport`/`clampViewToWorld`, all implemented. Pan/zoom is clamped to `MAX_VIEW_WIDTH`/`MAX_VIEW_HEIGHT` (well beyond the initial `DEF_WIDTH`/`DEF_HEIGHT` view, since Fields mode has no walls to bound the camera against). `handleZoom`'s per-event step scales with the scroll delta's own magnitude, not just its sign, so a fast scroll zooms proportionally more than a slow one
@@ -81,7 +81,7 @@ You can use AI for such updates, but all text should be human-reviewed.
 
 #### `FieldMath.hpp / FieldMath.cpp`
 - **What it does**: Shared force/field formulas so electrostatics/magnetism/induction stay thin data classes
-- **Functions**: `pointChargeField`/`pointChargePotential` (single-source E field/potential - the building block `coulombField`/`coulombPotential` sum over a `PointCharge` list, and that `World` also calls directly for particles), `coulombForceMagnitude`; `biotSavartField` (finite-wire closed form, takes `permeabilityFactor`), `forceBetweenWires`, `movingChargeField` (a moving point charge's own generated field - same signed-scalar convention as `biotSavartField`, also takes `permeabilityFactor`), `lorentzForce`
+- **Functions**: `pointChargeField`/`pointChargePotential` (single-source E field/potential - the building block `coulombField`/`coulombPotential` sum over a `PointCharge` list, and that `World` also calls directly for particles), `coulombForceMagnitude`; `biotSavartField` (finite-wire closed form, takes `permeabilityFactor`), `forceBetweenWires`, `movingChargeField` (a moving point charge's own generated field - same signed-scalar convention as `biotSavartField`, also takes `permeabilityFactor`), `lorentzForce`; `loopFlux` (`B * area * cos(rotationAngle)`, sampling the field at the loop's center - the same small-loop approximation `World` already uses elsewhere)
 
 ---
 
@@ -117,10 +117,7 @@ You can use AI for such updates, but all text should be human-reviewed.
 ### `src/induction/` - Induction
 
 #### `MovingLoop.hpp`
-- Center, velocity, radius, area, rotation angle/angular velocity (for the generator demo), last flux, induced EMF. Fully implemented as a state holder; flux/EMF computation is `TODO(Phase 4)`.
-
-#### `Generator.hpp`
-- Wraps a `MovingLoop` with a `motorMode` flag (generator: drives EMF from fixed rotation; motor: driven by circuit current - stretch goal per PLAN.md Phase 4).
+- Center, velocity, radius, turns, rotation angle/angular velocity, last flux, induced EMF, and a bounded `emfTrace` history (drawn live via `ImGui::PlotLines` in the Properties panel). `area()` is derived from `radius` rather than stored, so it can't drift out of sync. `rotationAngle` doubles as the generator demo: a nonzero `angularVelocity` alone produces the classic sinusoidal EMF (`World::update` handles both translation and rotation identically), so no separate `Generator`/motor-mode class exists yet - see PLAN.md's open decisions log.
 
 ---
 
@@ -153,8 +150,8 @@ You can use AI for such updates, but all text should be human-reviewed.
 
 #### `Renderer.hpp / Renderer.cpp`
 - **What it does**: Draws the grid, then mode-dependent content
-- **Toggle flags**: `showFieldVectors`, `showFieldLines`, `showEquipotentials`, `showMagneticField`, `showCurrentFlowAnimation`
-- **Key methods**: `drawGridlines()`; `drawWorld()` draws, in back-to-front order: equipotential contours, field lines, field vectors (arrows, length compressed toward `FIELD_VECTOR_MAX_LENGTH`), magnetic field markers (`drawMagneticField` - dots for out-of-page, crosses for into-page, sampled via `World::magneticFieldAt` so uniform field/wires/particles all show up together), Gaussian surfaces, wires (with a current-direction arrow and an in-progress `wirePreview` while dragging), wire-pair force readouts (`drawWireForceReadouts`, only for roughly-parallel pairs), particles (with trajectory trace), then charges on top. `drawCircuit()` (schematic + live V/I/R/Q labels + current-flow animation) is still `TODO(Phase 5)`.
+- **Toggle flags**: `showFieldVectors`, `showFieldLines`, `showEquipotentials`, `showMagneticField`, `currentFlowDisplay` (`CurrentFlowDisplay`: Off/Conventional/Electron)
+- **Key methods**: `drawGridlines()`; `drawWorld()` draws, in back-to-front order: equipotential contours, field lines, field vectors (arrows, length compressed toward `FIELD_VECTOR_MAX_LENGTH`), magnetic field markers (`drawMagneticField` - dots for out-of-page, crosses for into-page, sampled via `World::magneticFieldAt` so uniform field/wires/particles all show up together), Gaussian surfaces, wires (with an in-progress `wirePreview` while dragging), wire-pair force readouts (`drawWireForceReadouts`, only for roughly-parallel pairs), particles (with trajectory trace), loops (an outline foreshortened by `cos(rotationAngle)` - the correct orthographic projection of a true circle tilting out of the page - plus a floating EMF label), then charges on top. Wires and loops both animate `currentFlowDisplay` markers along themselves when not `Off`: Conventional draws small arrow chevrons (an `sf::CircleShape` with 3 points, rotated) marching in the signed-current/EMF direction; Electron draws charge-colored dots drifting the opposite way, representing the actual carriers - both driven by `World::simTime()` so they freeze correctly when paused. `drawCircuit()` (schematic + live V/I/R/Q labels, reusing the same current-flow markers) is still `TODO(Phase 5)`.
 
 ---
 
@@ -202,11 +199,13 @@ repeat each frame:
 ### Physics Update
 ```
 Fields mode (World::update):
+  for each MovingLoop: flux = B(center) . A * cos(rotationAngle) -> inducedEMF = -N*d(flux)/dt
+                       -> advance center/rotationAngle via engine/Solver (kinematic: constant
+                          velocity/angularVelocity, not force-driven)
   for each ChargedParticle: F = qE + qv x B, both fields sampled at each RK stage's
                             position via electricFieldAt/magneticFieldAt (which combine
                             every source, excluding the particle's own self-field)
                             -> integrate via engine/Solver
-  for each MovingLoop: flux = B . A * cos(theta) -> inducedEMF = -d(flux)/dt (TODO Phase 4)
 
 Circuits mode (CircuitGraph::update, TODO Phase 5):
   solve() - modified nodal analysis over all Components for this instant's node voltages
@@ -274,7 +273,7 @@ User sees updated simulation
   - fmt (formatted output) - git submodule
   - matplot++ (graphing via gnuplot) - git submodule
 - **Build command**: `cmake -B build && cmake --build build` (requires `git submodule update --init --recursive` first if cloned without `--recurse-submodules`)
-- **Current status**: builds and links a working app shell, electrostatics, and magnetism (Phases 1-3); induction/circuits remain stub sources (see PLAN.md)
+- **Current status**: builds and links a working app shell, electrostatics, magnetism, and induction (Phases 1-4); circuits remains stub sources (see PLAN.md)
 
 ---
 

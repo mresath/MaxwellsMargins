@@ -16,7 +16,8 @@ enum class EntityKind
     Charge,
     GaussianSurface,
     Particle,
-    Wire
+    Wire,
+    Loop
 };
 
 struct EntityRef
@@ -35,6 +36,7 @@ public:
 
     void reset();
     void update(float dt);
+    float simTime() const;
 
     std::vector<PointCharge> &charges();
     std::vector<CurrentWire> &wires();
@@ -60,6 +62,7 @@ public:
     GaussianSurface *findGaussianSurface(int id);
     ChargedParticle *findParticle(int id);
     CurrentWire *findWire(int id);
+    MovingLoop *findLoop(int id);
 
     // The single global field: every source at once (charges+particles for E; uniform
     // field+wires+particles for B). excludeParticleId skips that particle's own self-field.

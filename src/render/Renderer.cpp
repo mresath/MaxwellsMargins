@@ -6,6 +6,7 @@
 #include "electrostatics/EquipotentialTracer.hpp"
 #include "electrostatics/FieldSampler.hpp"
 #include "engine/FieldMath.hpp"
+#include "induction/MovingLoop.hpp"
 #include "magnetism/ChargedParticle.hpp"
 #include "magnetism/CurrentWire.hpp"
 #include "math/Util.hpp"
@@ -60,6 +61,46 @@ void drawWireSegment(sf::RenderWindow &window, const Vec2 &start, const Vec2 &en
     line[0] = {sf::Vector2f(metersToPixels(start.x), metersToPixels(start.y)), color};
     line[1] = {sf::Vector2f(metersToPixels(end.x), metersToPixels(end.y)), color};
     window.draw(line);
+}
+
+// Conventional current moves in the signed-current (or signed-EMF) direction; electron
+// flow is the physically-opposite motion of the actual (negative) charge carriers.
+float flowDirectionSign(float signedQuantity, CurrentFlowDisplay mode)
+{
+    const float conventionalSign = signedQuantity >= 0.0f ? 1.0f : -1.0f;
+    return mode == CurrentFlowDisplay::Electron ? -conventionalSign : conventionalSign;
+}
+
+// Conventional is the textbook direction-only abstraction (an arrow chevron); Electron is
+// the literal (negative) charge carriers (a dot).
+void drawFlowMarker(sf::RenderWindow &window, const Vec2 &pointMeters, const Vec2 &travelDirectionMeters, CurrentFlowDisplay mode)
+{
+    const sf::Vector2f centerPixels(metersToPixels(pointMeters.x), metersToPixels(pointMeters.y));
+
+    if (mode == CurrentFlowDisplay::Conventional)
+    {
+        const float sizePixels = metersToPixels(CURRENT_FLOW_MARKER_RADIUS) * 1.8f;
+        sf::CircleShape shape(sizePixels, 3);
+        shape.setOrigin(sf::Vector2f(sizePixels, sizePixels));
+        shape.setPosition(centerPixels);
+        shape.setFillColor(POSITIVE_CHARGE_COLOR);
+
+        // Point 0 of an SFML regular polygon faces up (-y); rotate that tip to face the
+        // travel direction (clockwise degrees, matching SFML's screen-space convention).
+        constexpr float kRadToDeg = 180.0f / 3.14159265358979323846f;
+        const float angleDeg = std::atan2(travelDirectionMeters.y, travelDirectionMeters.x) * kRadToDeg + 90.0f;
+        shape.setRotation(sf::degrees(angleDeg));
+        window.draw(shape);
+    }
+    else
+    {
+        const float radiusPixels = metersToPixels(CURRENT_FLOW_MARKER_RADIUS);
+        sf::CircleShape shape(radiusPixels);
+        shape.setOrigin(sf::Vector2f(radiusPixels, radiusPixels));
+        shape.setPosition(centerPixels);
+        shape.setFillColor(NEGATIVE_CHARGE_COLOR);
+        window.draw(shape);
+    }
 }
 } // namespace
 
@@ -163,9 +204,10 @@ void Renderer::drawWorld(sf::RenderWindow &window, const World &world, const std
         drawMagneticField(window, world);
 
     drawGaussianSurfaces(window, world.gaussianSurfaces(), world.charges());
-    drawWires(window, world.wires(), wirePreview);
+    drawWires(window, world, wirePreview);
     drawWireForceReadouts(window, world);
     drawParticles(window, world.particles());
+    drawLoops(window, world);
     drawCharges(window, world.charges());
 }
 
@@ -363,21 +405,31 @@ void Renderer::drawMagneticField(sf::RenderWindow &window, const World &world) c
     }
 }
 
-void Renderer::drawWires(sf::RenderWindow &window, const std::vector<CurrentWire> &wires, const std::optional<std::pair<Vec2, Vec2>> &wirePreview) const
+void Renderer::drawWires(sf::RenderWindow &window, const World &world, const std::optional<std::pair<Vec2, Vec2>> &wirePreview) const
 {
-    for (const auto &wire : wires)
+    for (const auto &wire : world.wires())
     {
         drawWireSegment(window, wire.start, wire.end, CURRENT_WIRE_COLOR);
 
-        const Vec2 towardEnd = wire.end - wire.start;
-        const Vec2 flowDirection = wire.current >= 0.0f ? towardEnd : towardEnd * -1.0f;
-        const float arrowLength = std::min(0.3f, flowDirection.length() * 0.3f);
-        if (arrowLength > 1e-6f)
-        {
-            const Vec2 midpoint = (wire.start + wire.end) * 0.5f;
-            const Vec2 direction = flowDirection.normalized() * arrowLength;
-            drawArrow(window, midpoint - direction * 0.5f, direction, CURRENT_WIRE_COLOR);
-        }
+        if (currentFlowDisplay == CurrentFlowDisplay::Off)
+            continue;
+
+        const Vec2 segment = wire.end - wire.start;
+        const float length = segment.length();
+        if (length < 1e-6f)
+            continue;
+
+        const Vec2 direction = segment / length;
+        const Vec2 travelDirection = direction * flowDirectionSign(wire.current, currentFlowDisplay);
+        const float magnitude = std::abs(wire.current);
+        const float speed = CURRENT_FLOW_MAX_SPEED * (magnitude / (magnitude + CURRENT_FLOW_SPEED_SATURATION)) * flowDirectionSign(wire.current, currentFlowDisplay);
+
+        float offset = std::fmod(world.simTime() * speed, CURRENT_FLOW_MARKER_SPACING);
+        if (offset < 0.0f)
+            offset += CURRENT_FLOW_MARKER_SPACING;
+
+        for (float d = offset; d < length; d += CURRENT_FLOW_MARKER_SPACING)
+            drawFlowMarker(window, wire.start + direction * d, travelDirection, currentFlowDisplay);
     }
 
     if (wirePreview)
@@ -443,5 +495,61 @@ void Renderer::drawParticles(sf::RenderWindow &window, const std::vector<Charged
         shape.setOutlineColor(sf::Color::White);
         shape.setOutlineThickness(1.0f);
         window.draw(shape);
+    }
+}
+
+void Renderer::drawLoops(sf::RenderWindow &window, const World &world) const
+{
+    constexpr float kTwoPi = 6.28318530718f;
+
+    for (const auto &loop : world.loops())
+    {
+        const float radiusPixels = metersToPixels(loop.radius);
+        // Correct orthographic projection of a true 3D circle tilting out of the page.
+        const float squish = std::abs(std::cos(loop.rotationAngle));
+
+        sf::CircleShape shape(radiusPixels);
+        shape.setOrigin(sf::Vector2f(radiusPixels, radiusPixels));
+        shape.setPosition(sf::Vector2f(metersToPixels(loop.center.x), metersToPixels(loop.center.y)));
+        shape.setScale(sf::Vector2f(squish, 1.0f));
+        shape.setFillColor(sf::Color::Transparent);
+        shape.setOutlineColor(LOOP_COLOR);
+        shape.setOutlineThickness(2.0f);
+        window.draw(shape);
+
+        if (std::abs(loop.inducedEMF) < MIN_DISPLAYED_EMF)
+            continue;
+
+        if (currentFlowDisplay != CurrentFlowDisplay::Off)
+        {
+            // No resistance is modeled for a bare loop (that's a circuits concept), so
+            // marker speed saturates against the induced EMF itself rather than an Amp value.
+            const float magnitude = std::abs(loop.inducedEMF);
+            const float angularSpeed = (CURRENT_FLOW_MAX_SPEED * (magnitude / (magnitude + CURRENT_FLOW_EMF_SATURATION)) / loop.radius) *
+                                        flowDirectionSign(loop.inducedEMF, currentFlowDisplay);
+            const float angleStep = CURRENT_FLOW_MARKER_SPACING / loop.radius;
+
+            float phase = std::fmod(world.simTime() * angularSpeed, angleStep);
+            if (phase < 0.0f)
+                phase += angleStep;
+
+            // Parametrized over the true circle's angle (equal arc-length steps in 3D), with
+            // only the rendered x-position squished - same projection reasoning as the outline.
+            for (float angle = phase; angle < kTwoPi; angle += angleStep)
+            {
+                const Vec2 offset(std::cos(angle) * loop.radius * squish, std::sin(angle) * loop.radius);
+                const Vec2 tangent(-std::sin(angle) * squish, std::cos(angle));
+                const Vec2 travelDirection = angularSpeed >= 0.0f ? tangent : tangent * -1.0f;
+                drawFlowMarker(window, loop.center + offset, travelDirection, currentFlowDisplay);
+            }
+        }
+
+        const std::string label = fmt::format("EMF = {:.3g} V", loop.inducedEMF);
+        const sf::Vector2f labelWorldPos(metersToPixels(loop.center.x), metersToPixels(loop.center.y) - radiusPixels - 16.0f);
+        const sf::Vector2i screenPos = window.mapCoordsToPixel(labelWorldPos, window.getView());
+
+        const sf::Color &c = INDUCED_EMF_ARROW_COLOR;
+        ImGui::GetForegroundDrawList()->AddText(ImVec2(static_cast<float>(screenPos.x), static_cast<float>(screenPos.y)),
+                                                 IM_COL32(c.r, c.g, c.b, c.a), label.c_str());
     }
 }

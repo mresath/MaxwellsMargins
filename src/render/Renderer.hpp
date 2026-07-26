@@ -15,6 +15,16 @@ class PointCharge;
 class GaussianSurface;
 class ChargedParticle;
 class CurrentWire;
+class MovingLoop;
+
+// Which way charge carriers are animated flowing through wires/loops (a rendering choice
+// only). Shared across magnetism, induction, and (once built) circuits.
+enum class CurrentFlowDisplay
+{
+    Off,
+    Conventional, // positive-charge-color markers moving in the signed-current direction
+    Electron      // negative-charge-color markers moving the opposite way
+};
 
 // Draws the grid, then mode-dependent content (Fields: charges/fields/wires/particles/
 // Gaussian surfaces; Circuits: schematic). Toggle flags below gate the field overlays.
@@ -32,7 +42,7 @@ public:
     bool showFieldLines = true;
     bool showEquipotentials = true;
     bool showMagneticField = true;
-    bool showCurrentFlowAnimation = true;
+    CurrentFlowDisplay currentFlowDisplay = CurrentFlowDisplay::Conventional;
 
 private:
     void drawGridlines(sf::RenderWindow &window) const;
@@ -46,7 +56,8 @@ private:
     void drawGaussianSurfaces(sf::RenderWindow &window, const std::vector<GaussianSurface> &surfaces, const std::vector<PointCharge> &charges) const;
 
     void drawMagneticField(sf::RenderWindow &window, const World &world) const;
-    void drawWires(sf::RenderWindow &window, const std::vector<CurrentWire> &wires, const std::optional<std::pair<Vec2, Vec2>> &wirePreview) const;
+    void drawWires(sf::RenderWindow &window, const World &world, const std::optional<std::pair<Vec2, Vec2>> &wirePreview) const;
     void drawWireForceReadouts(sf::RenderWindow &window, const World &world) const;
     void drawParticles(sf::RenderWindow &window, const std::vector<ChargedParticle> &particles) const;
+    void drawLoops(sf::RenderWindow &window, const World &world) const;
 };
