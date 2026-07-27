@@ -814,7 +814,7 @@ void App::drawToolSettingsPanel(float toolsPanelWidth)
     }
     else
     {
-        ImGui::TextDisabled("(settings added per-phase, see PLAN.md)");
+        ImGui::TextDisabled("(no settings for this tool)");
     }
 
     ImGui::End();

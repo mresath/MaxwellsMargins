@@ -739,17 +739,6 @@ void drawFieldMarker(sf::RenderWindow &window, const Vec2 &pointMeters, float ra
     }
 }
 
-void sampleAndDrawBFieldMarker(sf::RenderWindow &window, const World &world, const Vec2 &point)
-{
-    const float field = world.magneticFieldAt(point);
-    const float magnitude = std::abs(field);
-    if (magnitude < B_FIELD_MARKER_MIN_MAGNITUDE)
-        return;
-
-    const float radius = B_FIELD_MARKER_MAX_RADIUS * (magnitude / (magnitude + B_FIELD_MARKER_SATURATION));
-    const sf::Color &color = field >= 0.0f ? B_FIELD_OUT_OF_PAGE_COLOR : B_FIELD_INTO_PAGE_COLOR;
-    drawFieldMarker(window, point, radius, field >= 0.0f, color);
-}
 } // namespace
 
 void Renderer::drawMagneticField(sf::RenderWindow &window, const World &world) const
@@ -759,22 +748,18 @@ void Renderer::drawMagneticField(sf::RenderWindow &window, const World &world) c
     const Vec2 maxWorld = pixelsToMeters(Vec2(view.getCenter().x + view.getSize().x / 2.0f, view.getCenter().y + view.getSize().y / 2.0f));
 
     for (float y = minWorld.y; y <= maxWorld.y; y += B_FIELD_MARKER_SPACING)
-        for (float x = minWorld.x; x <= maxWorld.x; x += B_FIELD_MARKER_SPACING)
-            sampleAndDrawBFieldMarker(window, world, Vec2(x, y));
-
-    // A dipole magnet's field falls off sharply (~1/d^3) within a few radii of its own
-    // center - the shared grid above, spaced for slowly-varying sources (uniform field,
-    // wires), is too coarse to reliably land a sample near a magnet's peak, especially
-    // once the magnet itself is smaller than one grid spacing. Each magnet gets its own
-    // finer local grid instead, scaled to its own radius, so the near-field falloff it
-    // actually produces is visible rather than reading as uniformly weak.
-    for (const auto &magnet : world.dipoleMagnets())
     {
-        const float spacing = std::max(magnet.radius * 0.5f, 0.02f);
-        const float extent = magnet.radius * 4.0f;
-        for (float y = -extent; y <= extent; y += spacing)
-            for (float x = -extent; x <= extent; x += spacing)
-                sampleAndDrawBFieldMarker(window, world, magnet.center + Vec2(x, y));
+        for (float x = minWorld.x; x <= maxWorld.x; x += B_FIELD_MARKER_SPACING)
+        {
+            const float field = world.magneticFieldAt(Vec2(x, y));
+            const float magnitude = std::abs(field);
+            if (magnitude < B_FIELD_MARKER_MIN_MAGNITUDE)
+                continue;
+
+            const float radius = B_FIELD_MARKER_MAX_RADIUS * (magnitude / (magnitude + B_FIELD_MARKER_SATURATION));
+            const sf::Color &color = field >= 0.0f ? B_FIELD_OUT_OF_PAGE_COLOR : B_FIELD_INTO_PAGE_COLOR;
+            drawFieldMarker(window, Vec2(x, y), radius, field >= 0.0f, color);
+        }
     }
 }
 

@@ -156,8 +156,8 @@
 #define DEFAULT_DIPOLE_MAGNET_RADIUS 0.3f // meters - a compact object, unlike CurrentLoop's coil
 #define DIPOLE_MAGNET_RADIUS_STEP 0.02f   // meters, Tool Settings drag-slider step
 
-#define MIN_DIPOLE_MAGNET_SURFACE_FIELD -2.0f    // T
-#define MAX_DIPOLE_MAGNET_SURFACE_FIELD 2.0f      // T
+#define MIN_DIPOLE_MAGNET_SURFACE_FIELD -5.0f    // T
+#define MAX_DIPOLE_MAGNET_SURFACE_FIELD 5.0f      // T
 #define DEFAULT_DIPOLE_MAGNET_SURFACE_FIELD 1.0f  // T, a strong neodymium-magnet-scale value
 #define DIPOLE_MAGNET_SURFACE_FIELD_STEP 0.05f    // T, Tool Settings drag-slider step
 
