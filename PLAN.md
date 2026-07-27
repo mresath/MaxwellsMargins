@@ -18,9 +18,9 @@ The feature list splits into two fundamentally different interaction models, so 
   Induction are separate C++ modules (`src/electrostatics`, `src/magnetism`,
   `src/induction`) for organization, but they share one `World` container and one canvas.
 - **Circuits mode** - a separate schematic/graph canvas backed by `circuits/CircuitGraph`.
-  Components (resistor, capacitor, battery, switch, probes) are placed on a grid and wired
-  together; solved via Kirchhoff's laws (modified nodal analysis) each step, with RC/RL
-  transients integrated over time.
+  Components (resistor, lightbulb, capacitor, inductor, battery, switch, probes) are placed
+  on a grid and wired together; solved via Kirchhoff's laws (modified nodal analysis) each
+  step, with RC/RL/LC transients integrated over time via a backward-Euler companion model.
 
 A mode selector (tabs in the settings panel) switches between them. Each mode gets its own
 Tools/Properties panel content, but the overall panel layout (tools panel, properties
@@ -49,12 +49,14 @@ src/
 ├── electrostatics/             PointCharge, FieldSampler, EquipotentialTracer, GaussianSurface
 ├── magnetism/                  UniformBField, CurrentWire, CurrentLoop, ChargedParticle
 ├── induction/                  MovingLoop (also drives the generator demo via angularVelocity)
-├── circuits/                   Component (+Resistor/Capacitor/Battery/Switch/Probe), CircuitGraph
+├── circuits/                   Component (+Resistor/Lightbulb/Capacitor/Inductor/Battery/
+│                               Switch/Probe), CircuitWire, CircuitGraph
 ├── math/                       Vec2.hpp, Util.hpp
 ├── render/                     Renderer (grid, vectors, field lines, equipotentials, schematic drawing)
 ├── logging/                    Logger (JSON state logging)
 ├── graphing/                   Grapher (matplot++/gnuplot)
-└── scenes/                     Presets (dipole field, parallel plate capacitor, simple RC, particle in B)
+└── scenes/                     Presets (dipole field, particle in B, generator demo, basic
+                                resistor circuit, lightbulb, RC/LR/LC)
 ```
 
 Dependencies: SFML 3.0.2, ImGui + imgui-sfml, fmt, nlohmann/json, matplot++ (all as git
@@ -63,10 +65,12 @@ under `vendor/SFML`).
 
 ## Current status
 
-Phases 0-4 are complete: app shell, electrostatics, magnetism (uniform field, current
+Phases 0-5 are complete: app shell, electrostatics, magnetism (uniform field, current
 wires, charged particles, including their mutual E/B interaction via `World`'s global-field
-query methods), and induction (moving/rotating loops, Faraday/Lenz, the generator demo).
-Circuits and cross-cutting polish (Phases 5-6) remain.
+query methods), induction (moving/rotating loops, Faraday/Lenz, the generator demo), and
+circuits (resistor/lightbulb/capacitor/inductor/battery/switch/probe components solved via
+modified nodal analysis, with stable RC/RL/LC transients). Cross-cutting polish (Phase 6)
+remains.
 
 ## Phases
 
@@ -111,13 +115,13 @@ Circuits and cross-cutting polish (Phases 5-6) remain.
 
 ### Phase 5 - Circuits
 
-- `Component` hierarchy (`Resistor`, `Capacitor`, `Battery`, `Switch`, `Probe`) + placement/wiring tools on the schematic canvas.
-- `CircuitGraph::solve()`: modified nodal analysis (MNA) for series/parallel networks; `Switch` open = treated as removed from the node/edge list for that solve.
-- RC/RL transient integration via `engine/Solver` (capacitor charge, inductor current as state variables).
-- Ammeter/voltmeter `Probe`s: click-to-measure, non-invasive for voltmeters, zero-resistance in series for ammeters.
-- Live V/I/R/Q labels per component; current-flow animation along wires.
-- Presets: `scenes::loadParallelPlateCapacitor`, `scenes::loadSimpleRCCircuit`.
-- Acceptance: a battery+resistor+capacitor circuit's charge/voltage curves match the analytic `V(t) = V0(1 - e^{-t/RC})` within numerical tolerance; opening a switch stops current flow; probes read correct values against a hand-solved reference circuit.
+- `Component` hierarchy (`Resistor`, `Lightbulb`, `Capacitor`, `Inductor`, `Battery`, `Switch`, `Probe`) + a `CircuitWire` edge type, placed/wired on the schematic canvas by click-drag with both endpoints snapped to the grid (shared grid points become the same electrical node).
+- `CircuitGraph::solve()`: modified nodal analysis (MNA) for arbitrary topologies, with a per-connected-island reference node rather than one global ground. `Switch` open = removed from the node/edge list for that solve; closed = merged into one node, same as a `CircuitWire`.
+- `Capacitor`/`Inductor` transients integrated via a backward-Euler companion model (through `engine/Solver`, honoring the single-solver architecture) rather than a naive frozen-voltage explicit step - unconditionally stable regardless of the fixed timestep vs. the circuit's own RC/RL/LC time constant.
+- Ammeter/voltmeter `Probe`s: an ammeter is an ideal 0V voltage source (its branch current *is* the reading); a voltmeter is excluded from the solve entirely (reads two node potentials only) - both exact, not near-zero-resistance approximations.
+- Live V/I/R/Q labels per component, off by default and toggled individually per component (a dense schematic otherwise crowds/overlaps); current-flow animation along wires and component leads, with its own circuit-scale saturation constant (`CIRCUIT_CURRENT_FLOW_SATURATION`) distinct from Fields' wires.
+- Presets: `scenes::loadBasicResistorCircuit`, `scenes::loadLightbulbCircuit`, `scenes::loadSimpleRCCircuit`, `scenes::loadSimpleLRCircuit`, `scenes::loadSimpleLCCircuit`.
+- Acceptance: a battery+resistor+capacitor circuit's charge/voltage curves match the analytic `V(t) = V0(1 - e^{-t/RC})` within numerical tolerance (confirmed via a standalone harness against the real solver, not just visually); an RL circuit similarly matches `I(t) = (V0/R)(1 - e^{-tR/L})`; an LC loop (battery switched out) oscillates near `1/sqrt(LC)`, decaying slightly per period from backward Euler's known numerical damping (not a bug); opening a switch stops current flow; probes read correct values against a hand-solved reference circuit.
 
 ### Phase 6 - Cross-cutting polish
 
@@ -136,6 +140,14 @@ Circuits and cross-cutting polish (Phases 5-6) remain.
 - **No separate `Generator` class**: the planned `Generator` wrapper only added a `motorMode` flag that needs Circuits (not built yet) to mean anything, so its behavior was folded directly into `MovingLoop` (a nonzero `angularVelocity` alone gives the generator demo) rather than shipping an unusable field.
 - **Current-flow display is a Renderer-level tri-state** (`CurrentFlowDisplay`: Off/Conventional/Electron), not a per-domain flag, so magnetism's wires, induction's loops, and circuits' wires (once built) all animate from the same Settings toggle and drawing helpers.
 - **`CurrentLoop`'s own field uses the on-axis circular-loop formula radially** (exact at the loop's center, an approximation everywhere else) rather than the true off-axis field, which needs elliptic integrals - consistent with the project's other pragmatic field simplifications (e.g. `movingChargeField`'s point-charge Biot-Savart). `turns` on both `CurrentLoop` and `MovingLoop` models a multi-turn coil as ampere-turns/flux-linkage (`turns * current` or `turns * flux`) rather than simulating each winding.
+- **Circuit components are placed by spatial terminals (`posA`/`posB`), not node indices**: `CircuitGraph::solve()` derives the electrical node graph fresh each step from grid-snapped positions (`CircuitWire`s and closed `Switch`es merge nodes via union-find), rather than requiring the node graph to exist before a component can be placed - necessary for interactive placement, where a user builds up wiring incrementally.
+- **Capacitor/Inductor transients use a backward-Euler companion model**, not the initially-simpler "freeze last step's voltage, integrate the resulting current explicitly" approach - the latter is only conditionally stable (diverges to NaN whenever the fixed timestep exceeds the circuit's own RC/RL time constant, which user-adjustable sliders can easily produce; caught by a standalone verification harness before it shipped). The tradeoff is reduced accuracy (not instability) for a transient much faster than the fixed step, and for a genuinely oscillatory LC loop, gradual numerical damping of an otherwise-undamped oscillation - both are standard, well-understood properties of a first-order implicit method, not modeling errors.
+- **Per-connected-island grounding, not one global reference node**: an as-yet-unwired component (a normal state during interactive editing) would otherwise leave part of the MNA matrix singular. Each connected island (via conductance/source-branch edges) gets its own local `V=0` reference node instead.
+- **Ammeter is an ideal 0V voltage source, not a small-but-nonzero resistance**: reuses the same branch-current-unknown machinery Battery already requires, giving an exact reading with zero circuit disturbance rather than an approximation.
+- **Wire/closed-switch current (for the flow-animation visualization only) is approximated via a BFS spanning tree** of each merged node's wire/switch subgraph, assigning each tree edge the net injected current in its subtree - exact for a plain series/parallel tree of wiring (the common case), and a documented approximation (reading `0`) for any redundant loop a user draws on top of that. The algebraic MNA solve itself never needs this; it's display-only.
+- **`Lightbulb` is a `Resistor` subclass, not a sibling class**: electrically identical (a simplified fixed-resistance filament model, not a physically accurate nonlinear one), so `CircuitGraph::solve()`'s existing `dynamic_cast<Resistor*>` handles it with zero Lightbulb-specific code. Only its schematic symbol (a power-dependent glow) and `typeName()` differ - callers that need the distinction (rendering, Tool Settings) check `Lightbulb` first.
+- **Component labels default off, toggled individually per component** (`Component::showLabel`) rather than a single global on/off: a schematic with several components otherwise crowds/overlaps floating V/I/R/Q text. Each circuit preset explicitly turns on the one component its story is actually about (e.g. the capacitor in the RC preset).
+- **World-space text labels use `ImGui::GetBackgroundDrawList()`, not `GetForegroundDrawList()`**: the foreground list renders above every ImGui window including the Settings/Properties modals, so labels punched through on top of an open modal instead of being properly occluded by it.
 
 ## Checklist
 
@@ -191,15 +203,15 @@ Circuits and cross-cutting polish (Phases 5-6) remain.
 
 ### Phase 5 - Circuits
 
-- [ ] `Component` hierarchy placement/wiring tools on the schematic canvas
-- [ ] `CircuitGraph::solve()` (modified nodal analysis)
-- [ ] `Switch` open/closed handling in the solve
-- [ ] RC/RL transient integration via `engine/Solver`
-- [ ] Ammeter/voltmeter `Probe`s (click-to-measure)
-- [ ] Live V/I/R/Q labels per component
-- [ ] Current-flow animation along wires
-- [ ] Presets: `scenes::loadParallelPlateCapacitor`, `scenes::loadSimpleRCCircuit`
-- [ ] Acceptance: RC charge/voltage curves match `V(t) = V0(1 - e^{-t/RC})`; switches and probes behave correctly
+- [x] `Component` hierarchy (`Resistor`, `Lightbulb`, `Capacitor`, `Inductor`, `Battery`, `Switch`, `Probe`) + `CircuitWire`, placement/wiring tools on the schematic canvas
+- [x] `CircuitGraph::solve()` (modified nodal analysis, per-island grounding)
+- [x] `Switch` open/closed handling in the solve
+- [x] RC/RL/LC transient integration via `engine/Solver` (backward-Euler companion model)
+- [x] Ammeter/voltmeter `Probe`s (click-drag to place)
+- [x] Live V/I/R/Q labels per component (off by default, toggled individually)
+- [x] Current-flow animation along wires and component leads
+- [x] Presets: `scenes::loadBasicResistorCircuit`, `scenes::loadLightbulbCircuit`, `scenes::loadSimpleRCCircuit`, `scenes::loadSimpleLRCircuit`, `scenes::loadSimpleLCCircuit`
+- [x] Acceptance: RC charge/voltage curves match `V(t) = V0(1 - e^{-t/RC})` (verified via a standalone harness against the real solver); RL matches `I(t) = (V0/R)(1 - e^{-tR/L})`; LC oscillates near `1/sqrt(LC)`; switches and probes behave correctly. Verified interactively (all four circuit presets, both switches of the RC/LR/LC presets, Lightbulb glow, per-component label toggling).
 
 ### Phase 6 - Cross-cutting polish
 

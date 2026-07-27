@@ -7,8 +7,11 @@ class CircuitGraph;
 namespace Presets
 {
 void loadDipoleField(World &world);
-void loadParallelPlateCapacitor(CircuitGraph &circuit);
+void loadBasicResistorCircuit(CircuitGraph &circuit);
+void loadLightbulbCircuit(CircuitGraph &circuit);
 void loadSimpleRCCircuit(CircuitGraph &circuit);
+void loadSimpleLRCircuit(CircuitGraph &circuit);
+void loadSimpleLCCircuit(CircuitGraph &circuit);
 void loadParticleInUniformB(World &world);
 void loadGeneratorDemo(World &world);
 } // namespace Presets

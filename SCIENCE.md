@@ -152,12 +152,62 @@ $$
 
 ## Circuits
 
-Solved each step via **modified nodal analysis (MNA)**: unknowns are node voltages (and
-branch currents for voltage sources/inductors); equations come from Kirchhoff's current
-law (KCL) at each node plus the constitutive relation of each component
-($V=IR$ for resistors, $I = C\,dV/dt$ for capacitors, $V = L\,dI/dt$ for inductors, fixed
-EMF for batteries). This generalizes to arbitrary topologies without needing to detect
-independent loops, unlike mesh analysis.
+Solved each step via **modified nodal analysis (MNA)**: unknowns are node voltages (all but
+one reference node per connected island, so an as-yet-unwired component doesn't leave the
+whole matrix singular) plus one branch current per voltage-source-like element; equations
+come from Kirchhoff's current law (KCL) at each node plus each component's constitutive
+relation. This generalizes to arbitrary topologies without needing to detect independent
+loops, unlike mesh analysis.
+
+**Electrical nodes vs. schematic position**: `Component`s are placed by two spatial
+terminals (`posA`/`posB`, grid-snapped), not node indices directly. `CircuitGraph::solve()`
+derives the node graph from that placement each step: `CircuitWire`s and *closed* `Switch`es
+are ideal (zero-resistance) links, so their two endpoints are merged into one electrical
+node; `Resistor` becomes a plain conductance ($G=1/R$); `Battery`, `Capacitor`, `Inductor`,
+and `Probe::Kind::Ammeter` each get their own branch-current unknown (see below); open
+`Switch`es and `Probe::Kind::Voltmeter` contribute nothing to the matrix at all - a switch
+opening genuinely removes that edge from the graph rather than becoming a large-but-finite
+resistance, and a voltmeter is non-invasive by construction, not by approximation.
+
+**Battery**: an ideal EMF in series with `internalResistance` -
+$V(\mathrm{posA}) - V(\mathrm{posB}) - I \cdot R_{internal} = \mathrm{emf}$, with `posA` the
++ terminal by convention.
+
+**Ammeter**: modeled as an ideal 0V source rather than a small-but-nonzero resistance - its
+branch-current unknown *is* the reading, with no disturbance to the circuit and no separate
+approximation needed (reusing the same MNA machinery Battery already requires).
+
+**Lightbulb**: electrically a plain fixed-resistance `Resistor` (a simplified filament
+model, not a physically accurate nonlinear one, consistent with the project's other
+pragmatic simplifications) - `CircuitGraph::solve()` needs no Lightbulb-specific code at
+all, since `dynamic_cast<Resistor*>` matches it too. Only its schematic symbol differs: a
+glow that brightens toward `LIGHTBULB_GLOW_COLOR` as dissipated power ($P = VI$) approaches
+`LIGHTBULB_POWER_SATURATION`.
+
+**Capacitor and Inductor - backward-Euler companion models**: naively freezing a
+capacitor's voltage at $Q_n/C$ each step (zero series resistance) and integrating the
+resulting current forward explicitly is only *conditionally* stable - it diverges whenever
+the fixed timestep is larger than the circuit's own $RC$, which real user-adjustable
+sliders can easily produce. Instead, each step solves the *implicit* backward-Euler
+relation directly as part of the same linear system, by giving the branch a series
+resistance derived from $dt$:
+
+$$
+\text{Capacitor: } V = \frac{Q_n}{C} + I\left(\frac{dt}{C}\right), \qquad
+\text{Inductor: } V = -\frac{L}{dt}I_n + I\left(\frac{L}{dt}\right)
+$$
+
+(the inductor stamp is the capacitor's exact dual: a series resistance of $L/dt$ instead of
+$dt/C$, and a source voltage built from the *previous* current instead of charge). Both are
+unconditionally stable regardless of how large $dt$ is relative to the circuit's own time
+constant - the tradeoff, standard for a first-order implicit method, is that a transient
+much faster than $dt$ is resolved less accurately (though still stably, converging to the
+exact steady state) rather than not at all. `Capacitor::charge` is then a genuine running
+total ($Q_{n+1} = Q_n + I\,dt$); `Inductor::storedCurrent` is a direct carry-forward of the
+already-implicit new current (backward Euler produces it directly as the branch unknown,
+unlike charge which is a separate accumulated quantity) - both routed through
+`engine/Solver::step` regardless, honoring the single-solver architecture even though each
+derivative is constant over the step.
 
 **RC transient** (charging, switch closes at $t=0$ with initial charge 0):
 
@@ -171,9 +221,30 @@ $$
 I(t) = \frac{V_0}{R}\left(1 - e^{-tR/L}\right)
 $$
 
-These transients are integrated over time by the shared solver rather than solved
-analytically, so arbitrary combinations (switches opening mid-transient, series/parallel
-networks) work without special-casing.
+**LC oscillation** (an inductor and capacitor alone, no resistor or battery in the loop -
+`scenes::loadSimpleLCCircuit` reaches this by switching the battery out entirely once the
+capacitor is charged): an undriven, undamped harmonic oscillator,
+
+$$
+V_C(t) = V_0\cos(\omega t), \qquad \omega = \frac{1}{\sqrt{LC}}
+$$
+
+Backward Euler is unconditionally *stable* for this (it can't blow up), but - unlike for
+the purely-decaying RC/RL cases above - it is not *energy-conserving*: a real (undamped)
+LC loop should ring forever at constant amplitude, while the simulated one loses a small
+fraction of its amplitude each period (confirmed interactively: ~4% peak-to-peak decay
+after 3 periods at the default component values and `CALC_FREQ`). This is expected,
+well-known numerical damping for a first-order implicit method applied to an oscillatory
+(rather than decaying) system, not a modeling error - the oscillation frequency itself
+still matches $\omega=1/\sqrt{LC}$ closely.
+
+**Wire/closed-switch current** (for the current-flow-marker visualization only - the
+algebraic solve above never needs it): an ideal wire has zero voltage drop, so a current
+split at a junction can't be read off node voltages the way a resistor's can. Approximated
+by taking a BFS spanning tree of each merged node's wire/switch subgraph and assigning each
+tree edge the net injected current in its subtree (exact for a plain series/parallel tree
+of wiring - the common case - and a documented approximation, reading as `0`, for any
+redundant loop a user draws on top of that).
 
 ## Solver
 

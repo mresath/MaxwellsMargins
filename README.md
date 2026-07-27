@@ -24,11 +24,12 @@ A physics simulator/playground with the following features:
 - Induction
   - Moving & Rotating Loops (Faraday's/Lenz's Laws)
   - Generator Demo
-- Circuits (In Development)
-  - Resistors, Capacitors, Batteries, Switches
+- Circuits
+  - Resistors, Lightbulbs, Capacitors, Inductors, Batteries, Switches
   - Ammeter/Voltmeter Probes
+  - Solved via Modified Nodal Analysis, with Stable RC/RL/LC Transients
 - Real Quantities & Units
-  - SI throughout (Coulombs, N/C, Volts)
+  - SI throughout (Coulombs, N/C, Volts, Ohms, Farads, Henrys)
   - The minor and major gridlines represent 1m and 5m respectively
 - Object Selection & Properties Panel
 - Presets
@@ -54,7 +55,7 @@ Not yet released. To build from source, see [Building](#building) below.
 - `Esc`: toggle settings
 - `P`: pause/resume simulation
 
-UI panels: `Stats`, `Tools`, `Tool Settings`, `Properties` (appears once a charge, particle, wire, loop, or Gaussian surface is selected), `Settings` (`Esc`, holds the mode tabs, presets, and overlay toggles)
+UI panels: `Stats`, `Tools`, `Tool Settings`, `Properties` (appears once something is selected - in Fields mode a charge, particle, wire, loop, or Gaussian surface; in Circuits mode a component or wire), `Settings` (`Esc`, holds the mode tabs, presets, and overlay toggles)
 
 ## Electrostatics
 
@@ -86,13 +87,26 @@ UI panels: `Stats`, `Tools`, `Tool Settings`, `Properties` (appears once a charg
 - The induced current's sign drives the same `Current Flow` markers used for wires, so Lenz's law direction is visible directly rather than via a separate indicator
 - The Properties panel plots a selected loop's induced EMF live over time
 
+## Circuits
+
+- Every component/wire tool (`Resistor`, `Lightbulb`, `Capacitor`, `Inductor`, `Battery`, `Switch`, `Wire`, `Ammeter`, `Voltmeter`) is placed by clicking and dragging, snapping both endpoints to the grid so shared grid points become the same electrical node
+- Solved each step via modified nodal analysis (Kirchhoff's laws) - works for arbitrary topologies, not just a single loop
+- `Capacitor`/`Inductor` transients are integrated with a backward-Euler companion model, so RC/RL/LC time constants stay numerically stable even when they're much faster than the fixed simulation step
+- A `Lightbulb` is electrically a plain resistor, but its schematic symbol glows brighter as it dissipates more power
+- Ammeters read a solved branch current directly (no disturbance to the circuit); voltmeters read two node potentials without being wired into the solve at all
+- Each component's live V/I/R/Q label is off by default and toggled individually from its own Properties panel, so a busy schematic doesn't turn into overlapping text
+- The same `Current Flow` (Off/Conventional/Electron) setting from Magnetism animates wires and component leads here too
+
 ## Presets
 
 - **Dipole Field**: two equal-and-opposite point charges, for exploring field vector/line and equipotential behavior around a classic charge configuration
 - **Particle in Uniform B Field**: a charged particle tracing a circular path through a uniform magnetic field
 - **Generator Demo**: a multi-turn loop spinning in a uniform field, producing the classic sinusoidal generator EMF
-- **Parallel Plate Capacitor** (In Development): a battery-charged capacitor demo for circuits mode
-- **Simple RC Circuit** (In Development): a battery, resistor, and capacitor for exploring charge/discharge transients
+- **Basic Resistor Circuit**: a battery, switch, resistor, ammeter, and voltmeter - the simplest complete circuit, with both meters showing live readings from the start
+- **Lightbulb Circuit**: a battery, switch, and lightbulb, starting off - flip the switch and watch it light up
+- **Simple RC Circuit**: a battery, two switches, resistor, and capacitor - charges through the resistor with the first switch, then flip both switches to discharge back through the same resistor with the battery disconnected entirely
+- **Simple LR Circuit**: the same two-switch shape with an inductor instead of a capacitor - current rises through the resistor, then decays back down through it once the battery is switched out
+- **Simple LC Circuit**: an inductor and capacitor with no resistor at all - once the battery is switched out, the pair rings back and forth at their resonant frequency
 
 ## Notes
 

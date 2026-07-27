@@ -34,10 +34,13 @@ private:
     float drawToolsPanel();
     void drawToolSettingsPanel(float toolsPanelWidth);
     void drawPropertiesPanel();
+    void drawCircuitPropertiesPanel();
     void drawSettingsPanel();
 
     void beginGrab(const Vec2 &pos);
     void selectAt(const Vec2 &pos);
+    void beginCircuitGrab(const Vec2 &pos);
+    void selectCircuitAt(const Vec2 &pos);
 
     sf::RenderWindow m_window;
     sf::View m_view;
@@ -64,6 +67,11 @@ private:
     int m_grabbedId;
     EntityKind m_selectedKind;
     int m_selectedId;
+
+    CircuitEntityKind m_circuitGrabbedKind;
+    int m_circuitGrabbedId;
+    CircuitEntityKind m_circuitSelectedKind;
+    int m_circuitSelectedId;
 
     float m_accumulator;
     float m_lastFrameTime;

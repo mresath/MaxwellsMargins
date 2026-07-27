@@ -1,7 +1,14 @@
 #include "render/Renderer.hpp"
 
 #include "Config.hpp"
+#include "circuits/Battery.hpp"
+#include "circuits/Capacitor.hpp"
 #include "circuits/CircuitGraph.hpp"
+#include "circuits/Inductor.hpp"
+#include "circuits/Lightbulb.hpp"
+#include "circuits/Probe.hpp"
+#include "circuits/Resistor.hpp"
+#include "circuits/Switch.hpp"
 #include "core/World.hpp"
 #include "electrostatics/EquipotentialTracer.hpp"
 #include "electrostatics/FieldSampler.hpp"
@@ -19,7 +26,9 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -104,6 +113,34 @@ void drawFlowMarker(sf::RenderWindow &window, const Vec2 &pointMeters, const Vec
     }
 }
 
+// Steps CurrentFlowDisplay markers along a straight segment at a speed set by |current| -
+// shared by Fields' CurrentWire and Circuits' wires/component leads alike. saturationConstant
+// differs between the two (Fields' wires are user-set up to MAX_WIRE_CURRENT = 20A; solved
+// circuit currents are realistically mA-to-low-A, so they'd otherwise read as near-static).
+void drawStraightFlowMarkers(sf::RenderWindow &window, const Vec2 &start, const Vec2 &end, float current, float simTime, CurrentFlowDisplay mode,
+                              float saturationConstant = CURRENT_FLOW_SPEED_SATURATION)
+{
+    const float magnitude = std::abs(current);
+    if (magnitude < 1e-6f)
+        return;
+
+    const Vec2 segment = end - start;
+    const float length = segment.length();
+    if (length < 1e-6f)
+        return;
+
+    const Vec2 direction = segment / length;
+    const Vec2 travelDirection = direction * flowDirectionSign(current, mode);
+    const float speed = CURRENT_FLOW_MAX_SPEED * (magnitude / (magnitude + saturationConstant)) * flowDirectionSign(current, mode);
+
+    float offset = std::fmod(simTime * speed, CURRENT_FLOW_MARKER_SPACING);
+    if (offset < 0.0f)
+        offset += CURRENT_FLOW_MARKER_SPACING;
+
+    for (float d = offset; d < length; d += CURRENT_FLOW_MARKER_SPACING)
+        drawFlowMarker(window, start + direction * d, travelDirection, mode);
+}
+
 // A coil's turns, drawn as concentric rings stepping inward from the nominal radius
 // (capped at LOOP_VISUAL_MAX_RINGS so a high turn count reads as "many" without becoming
 // a solid disc); squish matches drawCircularFlowMarkers' foreshortening convention.
@@ -154,19 +191,207 @@ void drawCircularFlowMarkers(sf::RenderWindow &window, const Vec2 &center, float
         drawFlowMarker(window, center + offset, travelDirection, mode);
     }
 }
+
+// A component's own (along, across) coordinate frame - along the posA->posB direction and
+// perpendicular to it - so every schematic symbol is built once in local space and drawn
+// at whatever position/orientation/length the user actually dragged.
+struct ComponentFrame
+{
+    Vec2 posA;
+    Vec2 direction;
+    Vec2 perpendicular;
+    float span;
+    float symbolHalf;
+};
+
+ComponentFrame frameFor(const Component &component)
+{
+    const Vec2 segment = component.posB - component.posA;
+    const float span = segment.length();
+    const Vec2 direction = span > 1e-6f ? segment / span : Vec2(1.0f, 0.0f);
+    // Scales the symbol down on a short drag so it never overflows past the terminals.
+    const float symbolHalf = std::min(COMPONENT_SYMBOL_HALF_SIZE, span * 0.45f);
+    return {component.posA, direction, direction.perpendicular(), span, symbolHalf};
+}
+
+Vec2 localToWorld(const ComponentFrame &frame, float along, float across)
+{
+    return frame.posA + frame.direction * along + frame.perpendicular * across;
+}
+
+void drawComponentLeads(sf::RenderWindow &window, const ComponentFrame &frame, const sf::Color &color)
+{
+    const float midAlong = frame.span * 0.5f;
+    const Vec2 symbolStart = localToWorld(frame, midAlong - frame.symbolHalf, 0.0f);
+    const Vec2 symbolEnd = localToWorld(frame, midAlong + frame.symbolHalf, 0.0f);
+    drawWireSegment(window, frame.posA, symbolStart, color);
+    drawWireSegment(window, symbolEnd, localToWorld(frame, frame.span, 0.0f), color);
+}
+
+std::uint8_t lerpChannel(std::uint8_t from, std::uint8_t to, float t)
+{
+    return static_cast<std::uint8_t>(static_cast<float>(from) + t * (static_cast<float>(to) - static_cast<float>(from)));
+}
+
+// A glass circle (glowing toward LIGHTBULB_GLOW_COLOR as dissipated power increases) with
+// an X filament - Lightbulb is electrically a plain Resistor, so only this symbol differs.
+void drawLightbulbSymbol(sf::RenderWindow &window, const ComponentFrame &frame, float power, const sf::Color &lineColor)
+{
+    const float midAlong = frame.span * 0.5f;
+    const Vec2 center = localToWorld(frame, midAlong, 0.0f);
+    const float radiusPixels = metersToPixels(frame.symbolHalf * 0.9f);
+    const sf::Vector2f centerPixels(metersToPixels(center.x), metersToPixels(center.y));
+
+    const float brightness = std::abs(power) / (std::abs(power) + LIGHTBULB_POWER_SATURATION);
+    const sf::Color &off = LIGHTBULB_OFF_COLOR;
+    const sf::Color &glow = LIGHTBULB_GLOW_COLOR;
+    const sf::Color bulbColor(lerpChannel(off.r, glow.r, brightness), lerpChannel(off.g, glow.g, brightness), lerpChannel(off.b, glow.b, brightness));
+
+    sf::CircleShape bulb(radiusPixels);
+    bulb.setOrigin(sf::Vector2f(radiusPixels, radiusPixels));
+    bulb.setPosition(centerPixels);
+    bulb.setFillColor(bulbColor);
+    bulb.setOutlineColor(lineColor);
+    bulb.setOutlineThickness(2.0f);
+    window.draw(bulb);
+
+    const float f = frame.symbolHalf * 0.5f;
+    drawWireSegment(window, localToWorld(frame, midAlong - f, -f), localToWorld(frame, midAlong + f, f), lineColor);
+    drawWireSegment(window, localToWorld(frame, midAlong - f, f), localToWorld(frame, midAlong + f, -f), lineColor);
+}
+
+void drawResistorSymbol(sf::RenderWindow &window, const ComponentFrame &frame, const sf::Color &color)
+{
+    const float midAlong = frame.span * 0.5f;
+    constexpr int kZigzags = 6;
+    const float amplitude = frame.symbolHalf * 0.6f;
+
+    std::vector<Vec2> points(kZigzags + 1);
+    for (int i = 0; i <= kZigzags; ++i)
+    {
+        const float t = static_cast<float>(i) / static_cast<float>(kZigzags);
+        const float along = midAlong - frame.symbolHalf + t * (2.0f * frame.symbolHalf);
+        const bool isEndpoint = (i == 0 || i == kZigzags);
+        const float across = isEndpoint ? 0.0f : ((i % 2 == 0) ? amplitude : -amplitude);
+        points[i] = localToWorld(frame, along, across);
+    }
+
+    sf::VertexArray line(sf::PrimitiveType::LineStrip, points.size());
+    for (std::size_t i = 0; i < points.size(); ++i)
+        line[i] = {sf::Vector2f(metersToPixels(points[i].x), metersToPixels(points[i].y)), color};
+    window.draw(line);
+}
+
+void drawCapacitorSymbol(sf::RenderWindow &window, const ComponentFrame &frame, const sf::Color &color)
+{
+    const float midAlong = frame.span * 0.5f;
+    const float gap = frame.symbolHalf * 0.3f;
+    const float plateHalfHeight = frame.symbolHalf * 0.8f;
+
+    for (float along : {midAlong - gap, midAlong + gap})
+        drawWireSegment(window, localToWorld(frame, along, plateHalfHeight), localToWorld(frame, along, -plateHalfHeight), color);
+}
+
+// Long thin plate near posA (the + terminal by convention), short thick-looking plate near
+// posB - the standard schematic battery symbol.
+void drawBatterySymbol(sf::RenderWindow &window, const ComponentFrame &frame, const sf::Color &color)
+{
+    const float midAlong = frame.span * 0.5f;
+    const float gap = frame.symbolHalf * 0.3f;
+    const float longHalfHeight = frame.symbolHalf * 0.9f;
+    const float shortHalfHeight = frame.symbolHalf * 0.45f;
+
+    drawWireSegment(window, localToWorld(frame, midAlong - gap, longHalfHeight), localToWorld(frame, midAlong - gap, -longHalfHeight), color);
+    drawWireSegment(window, localToWorld(frame, midAlong + gap, shortHalfHeight), localToWorld(frame, midAlong + gap, -shortHalfHeight), color);
+}
+
+// A row of same-direction bumps, the standard schematic coil symbol.
+void drawInductorSymbol(sf::RenderWindow &window, const ComponentFrame &frame, const sf::Color &color)
+{
+    const float midAlong = frame.span * 0.5f;
+    constexpr int kBumps = 3;
+    constexpr int kPointsPerBump = 8;
+    const float amplitude = frame.symbolHalf * 0.7f;
+
+    std::vector<Vec2> points(kBumps * kPointsPerBump + 1);
+    for (int i = 0; i < static_cast<int>(points.size()); ++i)
+    {
+        const float t = static_cast<float>(i) / static_cast<float>(points.size() - 1);
+        const float along = midAlong - frame.symbolHalf + t * (2.0f * frame.symbolHalf);
+        const float bumpPhase = t * static_cast<float>(kBumps) * 3.14159265f;
+        const float across = -std::abs(std::sin(bumpPhase)) * amplitude;
+        points[i] = localToWorld(frame, along, across);
+    }
+
+    sf::VertexArray line(sf::PrimitiveType::LineStrip, points.size());
+    for (std::size_t i = 0; i < points.size(); ++i)
+        line[i] = {sf::Vector2f(metersToPixels(points[i].x), metersToPixels(points[i].y)), color};
+    window.draw(line);
+}
+
+void drawSwitchSymbol(sf::RenderWindow &window, const ComponentFrame &frame, bool closed, const sf::Color &color)
+{
+    const float midAlong = frame.span * 0.5f;
+    const Vec2 hinge = localToWorld(frame, midAlong - frame.symbolHalf, 0.0f);
+    const Vec2 contact = localToWorld(frame, midAlong + frame.symbolHalf, 0.0f);
+
+    const float dotRadiusPixels = metersToPixels(frame.symbolHalf * 0.15f);
+    for (const Vec2 &point : {hinge, contact})
+    {
+        sf::CircleShape dot(dotRadiusPixels);
+        dot.setOrigin(sf::Vector2f(dotRadiusPixels, dotRadiusPixels));
+        dot.setPosition(sf::Vector2f(metersToPixels(point.x), metersToPixels(point.y)));
+        dot.setFillColor(color);
+        window.draw(dot);
+    }
+
+    const Vec2 armEnd = closed ? contact : localToWorld(frame, midAlong + frame.symbolHalf * 0.3f, frame.symbolHalf * 0.9f);
+    drawWireSegment(window, hinge, armEnd, color);
+}
+
+void drawProbeSymbol(sf::RenderWindow &window, const ComponentFrame &frame, bool isAmmeter, const sf::Color &color)
+{
+    const float midAlong = frame.span * 0.5f;
+    const Vec2 center = localToWorld(frame, midAlong, 0.0f);
+    const float radiusPixels = metersToPixels(frame.symbolHalf * 0.9f);
+    const sf::Vector2f centerPixels(metersToPixels(center.x), metersToPixels(center.y));
+
+    sf::CircleShape circle(radiusPixels);
+    circle.setOrigin(sf::Vector2f(radiusPixels, radiusPixels));
+    circle.setPosition(centerPixels);
+    circle.setFillColor(sf::Color::Transparent);
+    circle.setOutlineColor(color);
+    circle.setOutlineThickness(2.0f);
+    window.draw(circle);
+
+    const sf::Vector2i screenPos = window.mapCoordsToPixel(centerPixels, window.getView());
+    const float halfCharWidth = ImGui::CalcTextSize(isAmmeter ? "A" : "V").x * 0.5f;
+    const float halfCharHeight = ImGui::CalcTextSize(isAmmeter ? "A" : "V").y * 0.5f;
+    ImGui::GetBackgroundDrawList()->AddText(ImVec2(static_cast<float>(screenPos.x) - halfCharWidth, static_cast<float>(screenPos.y) - halfCharHeight),
+                                             IM_COL32(color.r, color.g, color.b, color.a), isAmmeter ? "A" : "V");
+}
+
+void drawComponentLabel(sf::RenderWindow &window, const ComponentFrame &frame, const std::string &text, const sf::Color &color)
+{
+    const float midAlong = frame.span * 0.5f;
+    const Vec2 labelPos = localToWorld(frame, midAlong, -(frame.symbolHalf + 0.3f));
+    const sf::Vector2f labelWorldPos(metersToPixels(labelPos.x), metersToPixels(labelPos.y));
+    const sf::Vector2i screenPos = window.mapCoordsToPixel(labelWorldPos, window.getView());
+    ImGui::GetBackgroundDrawList()->AddText(ImVec2(static_cast<float>(screenPos.x), static_cast<float>(screenPos.y)), IM_COL32(color.r, color.g, color.b, color.a), text.c_str());
+}
 } // namespace
 
 Renderer::Renderer() = default;
 
 void Renderer::draw(sf::RenderWindow &window, Mode mode, const World &world, const CircuitGraph &circuit,
-                     const std::optional<std::pair<Vec2, Vec2>> &wirePreview) const
+                     const std::optional<std::pair<Vec2, Vec2>> &dragPreview) const
 {
     drawGridlines(window);
 
     if (mode == Mode::Fields)
-        drawWorld(window, world, wirePreview);
+        drawWorld(window, world, dragPreview);
     else
-        drawCircuit(window, circuit);
+        drawCircuit(window, circuit, dragPreview);
 }
 
 void Renderer::drawGridlines(sf::RenderWindow &window) const
@@ -264,11 +489,88 @@ void Renderer::drawWorld(sf::RenderWindow &window, const World &world, const std
     drawCharges(window, world.charges());
 }
 
-void Renderer::drawCircuit(sf::RenderWindow &window, const CircuitGraph &circuit) const
+void Renderer::drawCircuit(sf::RenderWindow &window, const CircuitGraph &circuit, const std::optional<std::pair<Vec2, Vec2>> &dragPreview) const
 {
-    // TODO(Phase 5): draw wires/components with live V/I/R/Q labels + current-flow animation.
-    (void)window;
-    (void)circuit;
+    drawCircuitWires(window, circuit, dragPreview);
+    drawCircuitComponents(window, circuit);
+}
+
+void Renderer::drawCircuitWires(sf::RenderWindow &window, const CircuitGraph &circuit, const std::optional<std::pair<Vec2, Vec2>> &dragPreview) const
+{
+    for (const auto &wire : circuit.wires())
+    {
+        drawWireSegment(window, wire.start, wire.end, WIRE_COLOR);
+        if (currentFlowDisplay != CurrentFlowDisplay::Off)
+            drawStraightFlowMarkers(window, wire.start, wire.end, wire.current, circuit.simTime(), currentFlowDisplay, CIRCUIT_CURRENT_FLOW_SATURATION);
+    }
+
+    if (dragPreview)
+        drawWireSegment(window, dragPreview->first, dragPreview->second, WIRE_COLOR);
+}
+
+void Renderer::drawCircuitComponents(sf::RenderWindow &window, const CircuitGraph &circuit) const
+{
+    for (const auto &comp : circuit.components())
+    {
+        const ComponentFrame frame = frameFor(*comp);
+
+        if (Lightbulb *bulb = dynamic_cast<Lightbulb *>(comp.get()))
+        {
+            // Checked before Resistor - Lightbulb IS-A Resistor, so the plain dynamic_cast
+            // below would otherwise match it first and draw a zigzag instead of a bulb.
+            drawComponentLeads(window, frame, COMPONENT_COLOR);
+            drawLightbulbSymbol(window, frame, bulb->power(), COMPONENT_COLOR);
+            if (bulb->showLabel)
+                drawComponentLabel(window, frame, fmt::format("R={:.3g} Ohm  V={:.3g} V  I={:.3g} A", bulb->resistance, bulb->voltage, bulb->current), COMPONENT_LABEL_COLOR);
+        }
+        else if (Resistor *resistor = dynamic_cast<Resistor *>(comp.get()))
+        {
+            drawComponentLeads(window, frame, COMPONENT_COLOR);
+            drawResistorSymbol(window, frame, COMPONENT_COLOR);
+            if (resistor->showLabel)
+                drawComponentLabel(window, frame, fmt::format("R={:.3g} Ohm  V={:.3g} V  I={:.3g} A", resistor->resistance, resistor->voltage, resistor->current), COMPONENT_LABEL_COLOR);
+        }
+        else if (Capacitor *capacitor = dynamic_cast<Capacitor *>(comp.get()))
+        {
+            drawComponentLeads(window, frame, COMPONENT_COLOR);
+            drawCapacitorSymbol(window, frame, COMPONENT_COLOR);
+            if (capacitor->showLabel)
+                drawComponentLabel(window, frame, fmt::format("C={:.3g} F  V={:.3g} V  Q={:.3g} C", capacitor->capacitance, capacitor->voltage, capacitor->charge), COMPONENT_LABEL_COLOR);
+        }
+        else if (Inductor *inductor = dynamic_cast<Inductor *>(comp.get()))
+        {
+            drawComponentLeads(window, frame, COMPONENT_COLOR);
+            drawInductorSymbol(window, frame, COMPONENT_COLOR);
+            if (inductor->showLabel)
+                drawComponentLabel(window, frame, fmt::format("L={:.3g} H  V={:.3g} V  I={:.3g} A", inductor->inductance, inductor->voltage, inductor->current), COMPONENT_LABEL_COLOR);
+        }
+        else if (Battery *battery = dynamic_cast<Battery *>(comp.get()))
+        {
+            drawComponentLeads(window, frame, COMPONENT_COLOR);
+            drawBatterySymbol(window, frame, COMPONENT_COLOR);
+            if (battery->showLabel)
+                drawComponentLabel(window, frame, fmt::format("EMF={:.3g} V  V={:.3g} V  I={:.3g} A", battery->emf, battery->voltage, battery->current), COMPONENT_LABEL_COLOR);
+        }
+        else if (Switch *sw = dynamic_cast<Switch *>(comp.get()))
+        {
+            const sf::Color &color = sw->closed ? COMPONENT_COLOR : OPEN_SWITCH_COLOR;
+            drawComponentLeads(window, frame, color);
+            drawSwitchSymbol(window, frame, sw->closed, color);
+            if (sw->showLabel)
+                drawComponentLabel(window, frame, fmt::format("{}  V={:.3g} V  I={:.3g} A", sw->closed ? "Closed" : "Open", sw->voltage, sw->current), COMPONENT_LABEL_COLOR);
+        }
+        else if (Probe *probe = dynamic_cast<Probe *>(comp.get()))
+        {
+            const bool isAmmeter = probe->kind == Probe::Kind::Ammeter;
+            drawComponentLeads(window, frame, PROBE_COLOR);
+            drawProbeSymbol(window, frame, isAmmeter, PROBE_COLOR);
+            if (probe->showLabel)
+                drawComponentLabel(window, frame, isAmmeter ? fmt::format("I={:.3g} A", probe->current) : fmt::format("V={:.3g} V", probe->voltage), COMPONENT_LABEL_COLOR);
+        }
+
+        if (currentFlowDisplay != CurrentFlowDisplay::Off)
+            drawStraightFlowMarkers(window, comp->posA, comp->posB, comp->current, circuit.simTime(), currentFlowDisplay, CIRCUIT_CURRENT_FLOW_SATURATION);
+    }
 }
 
 void Renderer::drawCharges(sf::RenderWindow &window, const std::vector<PointCharge> &charges) const
@@ -402,7 +704,7 @@ void Renderer::drawGaussianSurfaces(sf::RenderWindow &window, const std::vector<
         const sf::Vector2i screenPos = window.mapCoordsToPixel(labelWorldPos, window.getView());
 
         const sf::Color &c = GAUSSIAN_SURFACE_COLOR;
-        ImGui::GetForegroundDrawList()->AddText(ImVec2(static_cast<float>(screenPos.x), static_cast<float>(screenPos.y)),
+        ImGui::GetBackgroundDrawList()->AddText(ImVec2(static_cast<float>(screenPos.x), static_cast<float>(screenPos.y)),
                                                  IM_COL32(c.r, c.g, c.b, c.a), label.c_str());
     }
 }
@@ -463,26 +765,8 @@ void Renderer::drawWires(sf::RenderWindow &window, const World &world, const std
     for (const auto &wire : world.wires())
     {
         drawWireSegment(window, wire.start, wire.end, CURRENT_WIRE_COLOR);
-
-        if (currentFlowDisplay == CurrentFlowDisplay::Off)
-            continue;
-
-        const Vec2 segment = wire.end - wire.start;
-        const float length = segment.length();
-        if (length < 1e-6f)
-            continue;
-
-        const Vec2 direction = segment / length;
-        const Vec2 travelDirection = direction * flowDirectionSign(wire.current, currentFlowDisplay);
-        const float magnitude = std::abs(wire.current);
-        const float speed = CURRENT_FLOW_MAX_SPEED * (magnitude / (magnitude + CURRENT_FLOW_SPEED_SATURATION)) * flowDirectionSign(wire.current, currentFlowDisplay);
-
-        float offset = std::fmod(world.simTime() * speed, CURRENT_FLOW_MARKER_SPACING);
-        if (offset < 0.0f)
-            offset += CURRENT_FLOW_MARKER_SPACING;
-
-        for (float d = offset; d < length; d += CURRENT_FLOW_MARKER_SPACING)
-            drawFlowMarker(window, wire.start + direction * d, travelDirection, currentFlowDisplay);
+        if (currentFlowDisplay != CurrentFlowDisplay::Off)
+            drawStraightFlowMarkers(window, wire.start, wire.end, wire.current, world.simTime(), currentFlowDisplay);
     }
 
     if (wirePreview)
@@ -522,7 +806,7 @@ void Renderer::drawWireForceReadouts(sf::RenderWindow &window, const World &worl
             const sf::Vector2i screenPos = window.mapCoordsToPixel(labelWorldPos, window.getView());
 
             const sf::Color &c = CURRENT_WIRE_COLOR;
-            ImGui::GetForegroundDrawList()->AddText(ImVec2(static_cast<float>(screenPos.x), static_cast<float>(screenPos.y)),
+            ImGui::GetBackgroundDrawList()->AddText(ImVec2(static_cast<float>(screenPos.x), static_cast<float>(screenPos.y)),
                                                      IM_COL32(c.r, c.g, c.b, c.a), label.c_str());
         }
     }
@@ -573,7 +857,7 @@ void Renderer::drawLoops(sf::RenderWindow &window, const World &world) const
         const sf::Vector2i screenPos = window.mapCoordsToPixel(labelWorldPos, window.getView());
 
         const sf::Color &c = INDUCED_EMF_ARROW_COLOR;
-        ImGui::GetForegroundDrawList()->AddText(ImVec2(static_cast<float>(screenPos.x), static_cast<float>(screenPos.y)),
+        ImGui::GetBackgroundDrawList()->AddText(ImVec2(static_cast<float>(screenPos.x), static_cast<float>(screenPos.y)),
                                                  IM_COL32(c.r, c.g, c.b, c.a), label.c_str());
     }
 }

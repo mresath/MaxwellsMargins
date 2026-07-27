@@ -6,7 +6,7 @@ You can use AI for such updates, but all text should be human-reviewed.
 
 # Codebase Structure
 
-> **Status**: Phases 0-4 are implemented and interactively verified - app shell, electrostatics, magnetism (uniform field, current wires, charged particles), and induction (moving/rotating loops, Faraday/Lenz, the generator demo). Circuits and cross-cutting polish remain - see [PLAN.md](PLAN.md) for the phased build order.
+> **Status**: Phases 0-5 are implemented and interactively verified - app shell, electrostatics, magnetism (uniform field, current wires, charged particles), induction (moving/rotating loops, Faraday/Lenz, the generator demo), and circuits (resistor/capacitor/inductor/battery/switch/probe components solved via modified nodal analysis, with RC/RL transients). Cross-cutting polish remains - see [PLAN.md](PLAN.md) for the phased build order.
 
 ## Core Directories and Files
 
@@ -23,7 +23,7 @@ You can use AI for such updates, but all text should be human-reviewed.
 - **Contains**:
   - Window/world dimensions, grid spacing/colors, UI spacing
   - Engine settings: calculation frequency, max dt, max FPS
-  - Per-domain constants: Coulomb's constant, charge magnitude limits and the real elementary charge/electron/proton mass (electrostatics/magnetism, selectable via quick-set buttons), B-field strength and the adjustable `permeabilityFactor` limits (magnetism), loop radius/turns/angular-velocity limits and the EMF-trace cap (induction), resistance/capacitance/inductance/EMF limits (circuits), plus colors for charges, field vectors/lines, equipotentials, Gaussian surfaces, and loops, and the shared animated current-flow-marker constants (spacing/size/speed) used by wires, loops, and (once built) circuits alike
+  - Per-domain constants: Coulomb's constant, charge magnitude limits and the real elementary charge/electron/proton mass (electrostatics/magnetism, selectable via quick-set buttons), B-field strength and the adjustable `permeabilityFactor` limits (magnetism), loop radius/turns/angular-velocity limits and the EMF-trace cap (induction), resistance/capacitance/inductance/EMF/internal-resistance limits, a component symbol size, a circuits-specific current-flow-marker saturation constant, and `Lightbulb` glow colors/saturation (circuits), plus colors for charges, field vectors/lines, equipotentials, Gaussian surfaces, and loops, and the shared animated current-flow-marker constants (spacing/size/speed) used by wires, loops, and circuits' wires/components alike
 
 ---
 
@@ -48,10 +48,10 @@ You can use AI for such updates, but all text should be human-reviewed.
   - Owns one `World` (Fields mode), one `CircuitGraph` (Circuits mode), one `Tools`, one `Renderer`, one `Logger`, one `Grapher` - only one scene is active/visible at a time, gated by `m_mode`
 - **Key methods** (implemented):
   - `run()`: fixed-timestep accumulator loop (`CALC_FREQ`, capped at `MAX_UPDATES_PER_FRAME`) around `processEvents()`/`update()`/`draw()`
-  - `processEvents()`: window close/resize, pan (`RMB` drag)/zoom (wheel, scaled by scroll magnitude)/reset view (`MMB`), `Esc` opens Settings, `P` pauses independently, left-click position is converted pixels->meters; Move hit-tests via `World::findEntityAt` and grabs (`beginGrab`) - dragging a `Wire` translates both endpoints by the frame's mouse delta rather than snapping a point to the cursor; Select hit-tests and sets the persistent selection (`selectAt`); `PlaceCurrentWire` begins/finishes a drag (`Tools::beginWireDrag`/`finishWireDrag`) since a wire needs two points; everything else routes to `Tools::onClick`. `m_mouseWorldMeters` is tracked continuously for the Field Probe readout
-  - `drawToolsPanel()`/`drawToolSettingsPanel()`: always-visible, fixed top-left panels; Tool Settings shows per-tool controls (charge/particle magnitude with a quick "e" elementary-charge button, particle mass with "e-"/"p+" electron/proton buttons, Gaussian radius, wire current, Field Probe's live E/B readout, Move/Erase/Select hints)
-  - `drawPropertiesPanel()`: draws once `m_selectedKind != EntityKind::None` and the entity still exists (re-checked by id each frame, so it self-clears if the selection was erased) - editable fields per entity kind (Charge, GaussianSurface, Particle, Wire), each with the same quick-select buttons as Tool Settings where relevant
-  - `drawSettingsPanel()`: `Esc`-toggled modal with the Fields/Circuits mode switch, field/equipotential/magnetic-field overlay toggles, uniform B field controls, a `permeabilityFactor` slider with a "1x" reset button, preset buttons, and "Reset Simulation"
+  - `processEvents()`: window close/resize, pan (`RMB` drag)/zoom (wheel, scaled by scroll magnitude)/reset view (`MMB`), `Esc` opens Settings, `P` pauses independently, left-click position is converted pixels->meters. In Fields mode: Move hit-tests via `World::findEntityAt` and grabs (`beginGrab`) - dragging a `Wire` translates both endpoints by the frame's mouse delta rather than snapping a point to the cursor; Select hit-tests and sets the persistent selection (`selectAt`); `PlaceCurrentWire` begins/finishes a drag (`Tools::beginWireDrag`/`finishWireDrag`) since a wire needs two points; everything else routes to `Tools::onClick`. In Circuits mode: Move/Select work the same way via `beginCircuitGrab`/`selectCircuitAt` and `CircuitGraph::findEntityAt`; every placement tool (`PlaceResistor`/`PlaceCapacitor`/`PlaceInductor`/`PlaceBattery`/`PlaceSwitch`/`PlaceWire`/`PlaceAmmeter`/`PlaceVoltmeter`) is a two-point drag (`Tools::beginComponentDrag`/`finishComponentDrag`) with both endpoints snapped to the grid (`math::snapToGrid`) - a grabbed component/wire also re-snaps on release. `m_mouseWorldMeters` is tracked continuously for the Field Probe readout
+  - `drawToolsPanel()`/`drawToolSettingsPanel()`: always-visible, fixed top-left panels; Tool Settings shows per-tool controls (charge/particle magnitude with a quick "e" elementary-charge button, particle mass with "e-"/"p+" electron/proton buttons, Gaussian radius, wire current, Field Probe's live E/B readout, Circuits' per-tool defaults (resistance/capacitance/inductance/EMF+internal resistance/switch-closed), Move/Erase/Select hints)
+  - `drawPropertiesPanel()`: in Fields mode, draws once `m_selectedKind != EntityKind::None` and the entity still exists (re-checked by id each frame, so it self-clears if the selection was erased) - editable fields per entity kind (Charge, GaussianSurface, Particle, Wire), each with the same quick-select buttons as Tool Settings where relevant. In Circuits mode, delegates to `drawCircuitPropertiesPanel()`: editable component fields plus live `voltage`/`current` (and `charge` for Capacitor) readouts, dispatched by `dynamic_cast` per concrete `Component` subclass
+  - `drawSettingsPanel()`: `Esc`-toggled modal with the Fields/Circuits mode switch, a `currentFlowDisplay` toggle shared by both modes, field/equipotential/magnetic-field overlay toggles, uniform B field controls, a `permeabilityFactor` slider with a "1x" reset button, and mode-specific preset buttons + "Reset Simulation"
 
 #### `Mode.hpp`
 - **What it does**: `enum class Mode { Fields, Circuits }` - the top-level mode switch. See "Architecture" in [PLAN.md](PLAN.md) for why Fields and Circuits are split rather than one unified scene.
@@ -64,8 +64,8 @@ You can use AI for such updates, but all text should be human-reviewed.
 
 #### `Tools.hpp / Tools.cpp`
 - **What it does**: User interaction tools
-- **`ToolType` enum**: Fields-mode tools (place charge/wire/particle/loop, draw Gaussian surface, field probe) and Circuits-mode tools (place resistor/capacitor/battery/switch/wire, ammeter/voltmeter), plus shared `Select`/`Move`/`Erase` (camera pan is unconditional via right-mouse-drag, not a tool)
-- **Key methods**: `onClick(worldPos, World&)` places a `PointCharge`, `ChargedParticle`, `MovingLoop`, `CurrentLoop`, or `GaussianSurface` at the tool's adjustable settings, or erases whatever `World::findEntityAt` hits - a placed `MovingLoop` seeds `lastFlux` from the field it's actually sitting in, so the first update tick doesn't register a fake EMF spike. `beginWireDrag`/`finishWireDrag` place a `CurrentWire` from a press-drag-release gesture instead (a wire needs two points, so it doesn't go through `onClick`); switching tools mid-drag abandons it. Move and Select are handled in `App` instead (they need persistent state across frames). The `CircuitGraph&` overload is still `TODO(Phase 5)`.
+- **`ToolType` enum**: Fields-mode tools (place charge/wire/particle/loop, draw Gaussian surface, field probe) and Circuits-mode tools (place resistor/capacitor/inductor/battery/switch/wire, ammeter/voltmeter), plus shared `Select`/`Move`/`Erase` (camera pan is unconditional via right-mouse-drag, not a tool)
+- **Key methods**: `onClick(worldPos, World&)` places a `PointCharge`, `ChargedParticle`, `MovingLoop`, `CurrentLoop`, or `GaussianSurface` at the tool's adjustable settings, or erases whatever `World::findEntityAt` hits - a placed `MovingLoop` seeds `lastFlux` from the field it's actually sitting in, so the first update tick doesn't register a fake EMF spike. `beginWireDrag`/`finishWireDrag` place a `CurrentWire` from a press-drag-release gesture instead (a wire needs two points, so it doesn't go through `onClick`); switching tools mid-drag abandons it. `onClick(worldPos, CircuitGraph&)` only handles `Erase` (every Circuits placement tool is a drag, see below); `beginComponentDrag`/`finishComponentDrag` snap both endpoints to the grid and construct whichever `Component` subclass (or plain `CircuitWire`) matches the active tool. Move and Select are handled in `App` instead (they need persistent state across frames), for both modes.
 
 #### `UI.hpp`
 - **What it does**: View/window helpers (pan, zoom, resize, letterboxing) - `handleResize`/`handleZoom`/`handlePanMouse`/`calculateLetterboxViewport`/`clampViewToWorld`, all implemented. Pan/zoom is clamped to `MAX_VIEW_WIDTH`/`MAX_VIEW_HEIGHT` (well beyond the initial `DEF_WIDTH`/`DEF_HEIGHT` view, since Fields mode has no walls to bound the camera against). `handleZoom`'s per-event step scales with the scroll delta's own magnitude, not just its sign, so a fast scroll zooms proportionally more than a slow one
@@ -127,15 +127,32 @@ You can use AI for such updates, but all text should be human-reviewed.
 ### `src/circuits/` - Circuits
 
 #### `Component.hpp`
-- Abstract base: two node indices (into `CircuitGraph`'s node list), live `voltage`/`current` readouts for the properties panel, pure-virtual `typeName()`
+- Abstract base: `posA`/`posB` grid-snapped terminal positions plus a stable `id` (mirrors `World`'s entity id pattern), `nodeA`/`nodeB` electrical node indices reassigned by `CircuitGraph::solve()` every step from those positions (not persisted identity), live `voltage`/`current` readouts for the properties panel, pure-virtual `typeName()`
 
-#### `Resistor.hpp`, `Capacitor.hpp`, `Battery.hpp`, `Switch.hpp`, `Probe.hpp`
-- Concrete `Component`s: resistance; capacitance + stored charge; EMF + internal resistance; open/closed state; Ammeter/Voltmeter `Kind`. All fully implemented as trivial state holders (constructors + fields only) - the physics is in `CircuitGraph::update()`.
+#### `Resistor.hpp`, `Lightbulb.hpp`, `Capacitor.hpp`, `Inductor.hpp`, `Battery.hpp`, `Switch.hpp`, `Probe.hpp`
+- Concrete `Component`s: resistance; capacitance + stored `charge`; inductance + `storedCurrent` (the previous step's current, distinct from the live `current` readout - see `CircuitGraph.cpp`); EMF + internal resistance (`posA` is the + terminal by convention); open/closed state; Ammeter/Voltmeter `Kind`. All trivial state holders (constructors + fields only) - the physics is in `CircuitGraph::solve()`/`update()`. `Inductor` has no coupling to Fields mode's spatial B field at all (see PLAN.md's open decisions log) - it's purely a circuit-local RL element. `Lightbulb` is a `Resistor` subclass with no new fields (electrically identical - `dynamic_cast<Resistor*>` matches it too, so `CircuitGraph::solve()` needs no Lightbulb-specific code at all); only its `typeName()` and schematic symbol differ.
+
+#### `CircuitWire.hpp`
+- An ideal (zero-resistance) connection between two grid points, with a stable `id` and a post-solve `current` (for the flow-animation visualization only - see below). `CircuitGraph::solve()` merges its endpoints into one electrical node rather than solving it as a branch.
 
 #### `CircuitGraph.hpp / CircuitGraph.cpp`
-- **What it does**: Container for the Circuits-mode scene (mirrors `World`'s role for Fields mode)
-- **Holds**: a `std::vector<std::unique_ptr<Component>>` (polymorphic), a node count
-- **Key methods**: `addComponent<T>(...)` (templated factory), `reset()`, `update(dt)` - the modified-nodal-analysis solve and RC/RL transient integration are `TODO(Phase 5)`
+- **What it does**: Container for the Circuits-mode scene (mirrors `World`'s role for Fields mode), solved each step via modified nodal analysis (MNA)
+- **Holds**: a `std::vector<std::unique_ptr<Component>>` (polymorphic) and a `std::vector<CircuitWire>`
+- **Key methods**: `addComponent<T>(...)` (templated factory), `reset()`, `simTime()` (drives current-flow-marker animation, mirrors `World::simTime()`), `findEntityAt`/`removeEntity`/`findComponent`/`findWire` (id-keyed, mirrors `World`'s pattern), `allocateId()`
+- **`solve(dt)` - the MNA algorithm** (private, called from `update(dt)`):
+  1. Every distinct grid point touched by a terminal or wire endpoint becomes a "raw node" (quantized via `math::snapToGrid`'s spacing into a `std::map` key).
+  2. Wires and *closed* switches are ideal zero-resistance links, so their two endpoints are merged into the same electrical node via union-find - not given their own branch-current unknown. Open switches contribute no merge at all (dropped from the graph entirely, per PLAN.md).
+  3. Union-find roots are compacted into consecutive canonical node ids, and every `Component`'s `nodeA`/`nodeB` are set from them.
+  4. `Resistor`s become conductance edges (`G = 1/R`, no extra unknown); `Battery`/`Capacitor`/`Inductor`/`Ammeter` become voltage-source branches, each with its own current unknown, reducing to one shared `SourceBranch` shape (`nodeA`, `nodeB`, a source voltage, a series resistance):
+     - `Battery`: source voltage = `emf`, series resistance = `internalResistance`
+     - `Capacitor`: backward-Euler companion model - source voltage = `charge/capacitance` (from *last* step), series resistance = `dt/capacitance`. This (rather than freezing the voltage with zero series resistance and integrating explicitly afterward) is what keeps the solve stable even when `dt` is much larger than the circuit's own `RC` - see SCIENCE.md.
+     - `Inductor`: the dual companion model - source voltage = `-(L/dt) * storedCurrent`, series resistance = `L/dt`
+     - `Ammeter`: an ideal 0V source (source voltage = 0, series resistance = 0) - its branch-current unknown *is* the reading, with no separate near-zero-resistance approximation needed
+     - `Switch` (open or closed) and `Voltmeter` contribute no matrix row at all - closed switches already merged nodes in step 2; open switches and voltmeters are otherwise inert
+  5. Rather than one global ground, each connected "island" (via a second union-find over conductance/source-branch edges) gets its own local reference node (`V=0`) - so a component the user hasn't wired up yet doesn't leave the whole matrix singular.
+  6. Assembles the dense MNA matrix (node-voltage unknowns, minus one per island for its ground, plus one branch-current unknown per source branch) and solves via Gaussian elimination with partial pivoting; a near-singular pivot is nudged rather than divided by, for a bounded (if not physically meaningful) result on a genuinely degenerate wiring choice instead of a crash.
+  7. Extracts node voltages, per-component `voltage`/`current`, then a separate pass approximates each wire/closed-switch's `current` (needed for the flow animation, since an ideal wire has zero voltage drop and can't be read off node voltages the way a resistor's can) via a BFS spanning tree of each merged node's wire/switch subgraph, assigning each tree edge the net injected current in its subtree - exact for a plain series/parallel tree of wiring, `0` for any redundant loop on top of that.
+- **`update(dt)`**: calls `solve(dt)`, then integrates each `Capacitor`'s `charge` (`+= current * dt`, a genuine running total) and each `Inductor`'s `storedCurrent` (a direct carry-forward of the just-solved implicit current, since backward Euler already produced the exact new state) via `engine/Solver::step`, honoring the "single robust solver" requirement even though both derivatives are constant over the step.
 
 ---
 
@@ -145,7 +162,7 @@ You can use AI for such updates, but all text should be human-reviewed.
 - 2D vector math: arithmetic operators, `length()`/`normalized()`/`rotate()`/`perpendicular()`, `dot()`/`cross()` free functions
 
 #### `Util.hpp`
-- `pixelsToMeters()`/`metersToPixels()` conversions (scalar and `Vec2` overloads). No position-standardization step - Fields mode has no ground/wall reference, so world positions are just meters relative to the view origin
+- `pixelsToMeters()`/`metersToPixels()` conversions (scalar and `Vec2` overloads). No position-standardization step - Fields mode has no ground/wall reference, so world positions are just meters relative to the view origin. `distanceToSegment()` (point-to-finite-segment distance, used for wire/component hit-testing in both modes). `snapToGrid()` rounds a position to the nearest `GRID_MINOR_SPACING` intersection - the schematic grid Circuits-mode components/wires are placed on, so two terminals landing on the same point become the same electrical node
 
 ---
 
@@ -154,7 +171,9 @@ You can use AI for such updates, but all text should be human-reviewed.
 #### `Renderer.hpp / Renderer.cpp`
 - **What it does**: Draws the grid, then mode-dependent content
 - **Toggle flags**: `showFieldVectors`, `showFieldLines`, `showEquipotentials`, `showMagneticField`, `currentFlowDisplay` (`CurrentFlowDisplay`: Off/Conventional/Electron)
-- **Key methods**: `drawGridlines()`; `drawWorld()` draws, in back-to-front order: equipotential contours, field lines, field vectors (arrows, length compressed toward `FIELD_VECTOR_MAX_LENGTH`), magnetic field markers (`drawMagneticField` - dots for out-of-page, crosses for into-page, sampled via `World::magneticFieldAt` so uniform field/wires/particles all show up together), Gaussian surfaces, wires (with an in-progress `wirePreview` while dragging), wire-pair force readouts (`drawWireForceReadouts`, only for roughly-parallel pairs), current loops, particles (with trajectory trace), moving loops (an outline foreshortened by `cos(rotationAngle)` - the correct orthographic projection of a true circle tilting out of the page - plus a floating EMF label), then charges on top. Both loop types' `turns` are drawn as concentric rings (`drawLoopRings`, capped at `LOOP_VISUAL_MAX_RINGS`) rather than a single circle. Wires and both loop types animate `currentFlowDisplay` markers along themselves when not `Off` (`drawCircularFlowMarkers` for the loops, sharing `drawFlowMarker`'s per-marker shape/color): Conventional draws small arrow chevrons (an `sf::CircleShape` with 3 points, rotated) marching in the signed-current/EMF direction; Electron draws charge-colored dots drifting the opposite way, representing the actual carriers - all driven by `World::simTime()` so they freeze correctly when paused. `drawCircuit()` (schematic + live V/I/R/Q labels, reusing the same current-flow markers) is still `TODO(Phase 5)`.
+- **World-space text labels** (Gaussian charge, wire-force, EMF, component V/I/R/Q): drawn via `ImGui::GetBackgroundDrawList()->AddText(...)`, not `GetForegroundDrawList()` - the background list still renders above the SFML-drawn scene (so labels stay visible over the grid/entities) but below every ImGui window, so an open Settings/Properties modal correctly occludes them instead of labels punching through on top of it.
+- **Key methods**: `drawGridlines()`; `drawWorld()` draws, in back-to-front order: equipotential contours, field lines, field vectors (arrows, length compressed toward `FIELD_VECTOR_MAX_LENGTH`), magnetic field markers (`drawMagneticField` - dots for out-of-page, crosses for into-page, sampled via `World::magneticFieldAt` so uniform field/wires/particles all show up together), Gaussian surfaces, wires (with an in-progress drag preview while dragging), wire-pair force readouts (`drawWireForceReadouts`, only for roughly-parallel pairs), current loops, particles (with trajectory trace), moving loops (an outline foreshortened by `cos(rotationAngle)` - the correct orthographic projection of a true circle tilting out of the page - plus a floating EMF label), then charges on top. Both loop types' `turns` are drawn as concentric rings (`drawLoopRings`, capped at `LOOP_VISUAL_MAX_RINGS`) rather than a single circle. Wires and both loop types animate `currentFlowDisplay` markers along themselves when not `Off` (`drawCircularFlowMarkers` for the loops, sharing `drawFlowMarker`'s per-marker shape/color): Conventional draws small arrow chevrons (an `sf::CircleShape` with 3 points, rotated) marching in the signed-current/EMF direction; Electron draws charge-colored dots drifting the opposite way, representing the actual carriers - all driven by `World::simTime()` so they freeze correctly when paused.
+  - `drawCircuit()` draws `drawCircuitWires()` (same wire-segment-plus-flow-marker treatment as Fields' wires, driven by `CircuitGraph::simTime()`, plus an in-progress drag preview) then `drawCircuitComponents()`: each `Component` gets a schematic symbol built in its own (along, across) frame (`ComponentFrame`/`frameFor`/`localToWorld` - along the `posA`->`posB` direction and perpendicular to it, so a symbol works at any drag angle/length, scaled down on a short drag so it never overflows the terminals) - a zigzag for `Resistor`, a circle that glows toward `LIGHTBULB_GLOW_COLOR` as dissipated power (`Lightbulb::power()`, `V*I`) approaches `LIGHTBULB_POWER_SATURATION` for `Lightbulb` (checked *before* `Resistor` in the `dynamic_cast` chain, since it inherits from it), parallel plates for `Capacitor`, a row of bumps for `Inductor`, long+short plates for `Battery`, a hinge+contact-dot pair for `Switch` (tilted open/flat closed, drawn in `OPEN_SWITCH_COLOR` when open), a circle with an "A"/"V" glyph for `Probe`, plus a live label (`fmt::format`-ed V/I/R/Q text via `drawComponentLabel`, only drawn when that component's own `Component::showLabel` is checked - off by default, toggled individually per component from its Properties panel, since a dense schematic's labels otherwise crowd/overlap) and `currentFlowDisplay` markers along its own leads (`drawStraightFlowMarkers`, also shared by Fields' `drawWires` and Circuits' wires - the straight-segment analog of `drawCircularFlowMarkers` - with its own `CIRCUIT_CURRENT_FLOW_SATURATION` half-saturation point, since solved circuit currents are realistically mA-to-low-A scale rather than Fields wires' up-to-20A range).
 
 ---
 
@@ -178,11 +197,15 @@ You can use AI for such updates, but all text should be human-reviewed.
 ### `src/scenes/` - Preloaded Test Scenes
 
 #### `Presets.hpp / Presets.cpp`
-- One function per preset, each placed relative to the view's center (not meters-space origin) so it lands in the visible viewport: `loadDipoleField` (a +/- charge pair 2 meters apart), `loadParticleInUniformB` (one charged particle in an enabled uniform field), both wired to Settings-modal buttons. `loadParallelPlateCapacitor`/`loadSimpleRCCircuit` are still `TODO(Phase 5)`.
+- One function per preset, each placed relative to the view's center (not meters-space origin) so it lands in the visible viewport: `loadDipoleField` (a +/- charge pair 2 meters apart), `loadParticleInUniformB` (one charged particle in an enabled uniform field), `loadGeneratorDemo` (a multi-turn spinning `MovingLoop`) - all wired to Settings-modal buttons, in that order alongside the circuit presets below (Circuits mode's own buttons are ordered by how introductory each demo is: `loadBasicResistorCircuit` first, then `loadLightbulbCircuit`, then the three RC/LR/LC presets).
+- `loadBasicResistorCircuit`: battery + switch + resistor + ammeter (in series) + voltmeter (wired as a separate parallel branch across the resistor's own two nodes, non-invasive) - the simplest complete circuit, with the ammeter/voltmeter labels on by default (the resistor's own label stays off - the meters already show its current/voltage, so a third label would just repeat the same numbers).
+- `loadLightbulbCircuit`: battery + switch + `Lightbulb`, starting open so flipping it is what lights the bulb.
+- Three circuit presets share the same two-switch T-junction layout (a charge switch along the top edge, a second switch dropping vertically from the T-junction to the bottom rail, both starting in the state that puts the demo in "phase 1"): `loadSimpleRCCircuit` (charge switch closed + resistor + capacitor, discharge switch open - closing the discharge switch instead disconnects the battery entirely and discharges the capacitor back through just the resistor), `loadSimpleLRCircuit` (the same shape with an `Inductor` instead of a `Capacitor` - the second switch lets the inductor's current decay through the resistor with the battery disconnected), `loadSimpleLCCircuit` (charge switch closed + `Inductor` + `Capacitor`, no resistor at all - the second switch disconnects the battery entirely, leaving a pure L-C loop that rings at `1/sqrt(LC)`, see SCIENCE.md's note on backward Euler's numerical damping for this specifically-oscillatory case).
+- Every circuit preset orients each component's `posA` toward the battery's + terminal (directly or via the bottom rail) so voltages/currents read positive, matching conventional-current flow and the textbook picture - verified per-preset against hand-derived expected values via standalone harnesses, not just visually, since getting a `posA`/`posB` order backwards silently flips only the sign, not the magnitude.
 
 ---
 
-## How the Simulation Works (Fields mode; Circuits mode is still planned - see PLAN.md)
+## How the Simulation Works
 
 ### Initialization Phase (main.cpp -> App)
 1. `chdirToExecutableDirectory()` so relative asset paths resolve correctly
@@ -210,9 +233,11 @@ Fields mode (World::update):
                             every source, excluding the particle's own self-field)
                             -> integrate via engine/Solver
 
-Circuits mode (CircuitGraph::update, TODO Phase 5):
-  solve() - modified nodal analysis over all Components for this instant's node voltages
-  integrate Capacitor charge / Inductor current via engine/Solver for the next dt
+Circuits mode (CircuitGraph::update(dt)):
+  solve(dt) - modified nodal analysis over all Components for this instant's node voltages,
+              with Capacitor/Inductor as backward-Euler companion-model voltage sources
+              (stable regardless of dt vs. the circuit's own RC/RL time constant)
+  integrate Capacitor charge / Inductor storedCurrent via engine/Solver for the next dt
 ```
 See [SCIENCE.md](SCIENCE.md) for the full physics/math.
 
@@ -232,7 +257,7 @@ creates/modifies entities in World or CircuitGraph
     v
 App::update(dt)
     +-> (Fields) World::update(dt) -> engine/Solver integrates particles/loops
-    +-> (Circuits) CircuitGraph::update(dt) -> MNA solve + RC/RL transient step
+    +-> (Circuits) CircuitGraph::update(dt) -> MNA solve(dt) + RC/RL transient step
     +-> Logger::record(...)
     v
 Renderer::draw(window, mode, world, circuit)
@@ -259,7 +284,7 @@ User sees updated simulation
 
 ### For Adding Features
 - New Fields-mode entity type: add to the relevant domain folder, add a container in `World`, add a `ToolType` + `Tools::onClick` case, add rendering in `Renderer::drawWorld`
-- New circuit component: add a `Component` subclass in `src/circuits/`, wire it into `CircuitGraph::solve()` (once implemented)
+- New circuit component: add a `Component` subclass in `src/circuits/`, wire it into `CircuitGraph::solve()` (a conductance edge if it's a plain resistance, a `SourceBranch` if it needs its own current unknown), add a `ToolType` + `Tools::beginComponentDrag`/`finishComponentDrag` case, add a schematic symbol in `Renderer::drawCircuitComponents`
 - New ODE use: call `engine/Solver::step()` with a `Derivative` lambda closing over the relevant entity's state
 - New preset: add a function to `src/scenes/Presets.hpp/.cpp`, add a button in `App::drawSettingsPanel()`
 
@@ -276,7 +301,7 @@ User sees updated simulation
   - fmt (formatted output) - git submodule
   - matplot++ (graphing via gnuplot) - git submodule
 - **Build command**: `cmake -B build && cmake --build build` (requires `git submodule update --init --recursive` first if cloned without `--recurse-submodules`)
-- **Current status**: builds and links a working app shell, electrostatics, magnetism, and induction (Phases 1-4); circuits remains stub sources (see PLAN.md)
+- **Current status**: builds and links a working app shell, electrostatics, magnetism, induction, and circuits (Phases 1-5); cross-cutting polish (Phase 6) remains (see PLAN.md)
 
 ---
 
@@ -302,5 +327,5 @@ User sees updated simulation
 ## Notes
 
 - Update this document as each phase in [PLAN.md](PLAN.md) lands.
-- Fields mode and Circuits mode intentionally do not share a scene container: Fields entities live in continuous 2D space and superpose physically, while Circuits entities are graph/topology-based (node indices, not positions) and are solved algebraically (MNA) rather than by force integration alone.
-- Loops and circuit components are still trivial value-holders with the physics left as a `TODO(Phase N)` stub; charges, wires, and particles now have their physics/numerics fully implemented in `engine/FieldMath` and `World`.
+- Fields mode and Circuits mode intentionally do not share a scene container: Fields entities live in continuous 2D space and superpose physically, while Circuits entities carry both a spatial placement (`posA`/`posB`, for the schematic canvas and grid-snapping) and a separate electrical-node identity (`nodeA`/`nodeB`, recomputed every solve) and are solved algebraically (MNA) rather than by force integration alone.
+- Every entity type across all five phases now has its physics/numerics fully implemented (not a stub); only Phase 6's logging/graphing/unit-display/overlay-QA pass remains.

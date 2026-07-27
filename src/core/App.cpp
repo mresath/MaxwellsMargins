@@ -1,6 +1,13 @@
 #include "core/App.hpp"
 
 #include "Config.hpp"
+#include "circuits/Battery.hpp"
+#include "circuits/Capacitor.hpp"
+#include "circuits/Inductor.hpp"
+#include "circuits/Lightbulb.hpp"
+#include "circuits/Probe.hpp"
+#include "circuits/Resistor.hpp"
+#include "circuits/Switch.hpp"
 #include "core/UI.hpp"
 #include "math/Util.hpp"
 #include "math/Vec2.hpp"
@@ -48,8 +55,12 @@ const char *toolName(ToolType tool)
         return "Field Probe";
     case ToolType::PlaceResistor:
         return "Place Resistor";
+    case ToolType::PlaceLightbulb:
+        return "Place Lightbulb";
     case ToolType::PlaceCapacitor:
         return "Place Capacitor";
+    case ToolType::PlaceInductor:
+        return "Place Inductor";
     case ToolType::PlaceBattery:
         return "Place Battery";
     case ToolType::PlaceSwitch:
@@ -96,6 +107,24 @@ const char *iconTextureFor(ToolType tool)
         return "moving_loop";
     case ToolType::PlaceCurrentLoop:
         return "current_loop";
+    case ToolType::PlaceResistor:
+        return "resistor";
+    case ToolType::PlaceLightbulb:
+        return "lightbulb";
+    case ToolType::PlaceCapacitor:
+        return "capacitor";
+    case ToolType::PlaceInductor:
+        return "inductor";
+    case ToolType::PlaceBattery:
+        return "battery";
+    case ToolType::PlaceSwitch:
+        return "switch";
+    case ToolType::PlaceWire:
+        return "wire";
+    case ToolType::PlaceAmmeter:
+        return "ammeter";
+    case ToolType::PlaceVoltmeter:
+        return "voltmeter";
     default:
         return "blank";
     }
@@ -109,8 +138,11 @@ std::vector<ToolType> toolsForMode(Mode mode)
                 ToolType::PlaceCurrentWire, ToolType::PlaceChargedParticle, ToolType::PlaceMovingLoop, ToolType::PlaceCurrentLoop,
                 ToolType::DrawGaussianSurface, ToolType::Erase};
     }
-    return {ToolType::Select, ToolType::Move, ToolType::PlaceResistor, ToolType::PlaceCapacitor, ToolType::PlaceBattery,
-            ToolType::PlaceSwitch, ToolType::PlaceWire, ToolType::PlaceAmmeter, ToolType::PlaceVoltmeter, ToolType::Erase};
+    // Ordered by expected frequency of use: wiring, switches, and the power source first
+    // (needed in nearly every circuit), then the two probes, then passive components from
+    // most to least common.
+    return {ToolType::Select, ToolType::Move, ToolType::PlaceWire, ToolType::PlaceSwitch, ToolType::PlaceBattery, ToolType::PlaceAmmeter, ToolType::PlaceVoltmeter,
+            ToolType::PlaceResistor, ToolType::PlaceLightbulb, ToolType::PlaceCapacitor, ToolType::PlaceInductor, ToolType::Erase};
 }
 } // namespace
 
@@ -128,6 +160,10 @@ App::App()
       m_grabbedId(-1),
       m_selectedKind(EntityKind::None),
       m_selectedId(-1),
+      m_circuitGrabbedKind(CircuitEntityKind::None),
+      m_circuitGrabbedId(-1),
+      m_circuitSelectedKind(CircuitEntityKind::None),
+      m_circuitSelectedId(-1),
       m_accumulator(0.0f),
       m_lastFrameTime(0.0f)
 {
@@ -141,7 +177,8 @@ App::App()
 
     m_window.setFramerateLimit(MAX_FPS);
 
-    for (const char *name : {"cursor", "hand", "trash", "positive_charge", "negative_charge", "gaussian_surface", "field_probe", "charged_particle", "current_wire", "moving_loop", "current_loop"})
+    for (const char *name : {"cursor", "hand", "trash", "positive_charge", "negative_charge", "gaussian_surface", "field_probe", "charged_particle", "current_wire", "moving_loop", "current_loop",
+                             "resistor", "lightbulb", "capacitor", "inductor", "battery", "switch", "wire", "ammeter", "voltmeter"})
     {
         sf::Texture texture;
         texture.setSmooth(true);
@@ -285,6 +322,26 @@ void App::processEvents()
                     if (CurrentLoop *loop = m_world.findCurrentLoop(m_grabbedId))
                         loop->center = m_mouseWorldMeters;
                 }
+                else if (m_circuitGrabbedKind == CircuitEntityKind::Component)
+                {
+                    // Two terminals, so Move translates both by the cursor's frame-to-frame
+                    // delta instead of snapping a single point to it (snapped to grid on release).
+                    if (Component *comp = m_circuit.findComponent(m_circuitGrabbedId))
+                    {
+                        const Vec2 delta = m_mouseWorldMeters - previousMouseWorldMeters;
+                        comp->posA += delta;
+                        comp->posB += delta;
+                    }
+                }
+                else if (m_circuitGrabbedKind == CircuitEntityKind::Wire)
+                {
+                    if (CircuitWire *wire = m_circuit.findWire(m_circuitGrabbedId))
+                    {
+                        const Vec2 delta = m_mouseWorldMeters - previousMouseWorldMeters;
+                        wire->start += delta;
+                        wire->end += delta;
+                    }
+                }
 
                 if (m_isPanning)
                 {
@@ -321,7 +378,14 @@ void App::processEvents()
                     }
                     else
                     {
-                        m_tools.onClick(pos, m_circuit);
+                        if (m_tools.activeTool() == ToolType::Move)
+                            beginCircuitGrab(pos);
+                        else if (m_tools.activeTool() == ToolType::Select)
+                            selectCircuitAt(pos);
+                        else if (m_tools.activeTool() == ToolType::Erase)
+                            m_tools.onClick(pos, m_circuit);
+                        else
+                            m_tools.beginComponentDrag(pos);
                     }
                 }
             }
@@ -335,9 +399,30 @@ void App::processEvents()
                 m_isPanning = false;
             else if (mouseUp->button == sf::Mouse::Button::Left)
             {
-                if (m_tools.activeTool() == ToolType::PlaceCurrentWire && m_tools.isDraggingWire())
+                if (m_mode == Mode::Fields && m_tools.activeTool() == ToolType::PlaceCurrentWire && m_tools.isDraggingWire())
                     m_tools.finishWireDrag(m_mouseWorldMeters, m_world);
+                else if (m_mode == Mode::Circuits && m_tools.isDraggingComponent())
+                    m_tools.finishComponentDrag(m_mouseWorldMeters, m_circuit);
+
+                if (m_circuitGrabbedKind == CircuitEntityKind::Component)
+                {
+                    if (Component *comp = m_circuit.findComponent(m_circuitGrabbedId))
+                    {
+                        comp->posA = snapToGrid(comp->posA);
+                        comp->posB = snapToGrid(comp->posB);
+                    }
+                }
+                else if (m_circuitGrabbedKind == CircuitEntityKind::Wire)
+                {
+                    if (CircuitWire *wire = m_circuit.findWire(m_circuitGrabbedId))
+                    {
+                        wire->start = snapToGrid(wire->start);
+                        wire->end = snapToGrid(wire->end);
+                    }
+                }
+
                 m_grabbedKind = EntityKind::None;
+                m_circuitGrabbedKind = CircuitEntityKind::None;
             }
         }
 
@@ -367,6 +452,26 @@ void App::selectAt(const Vec2 &pos)
     m_selectedId = hit.id;
 }
 
+void App::beginCircuitGrab(const Vec2 &pos)
+{
+    const CircuitEntityRef hit = m_circuit.findEntityAt(pos);
+    m_circuitGrabbedKind = hit.kind;
+    m_circuitGrabbedId = hit.id;
+
+    if (hit.kind != CircuitEntityKind::None)
+    {
+        m_circuitSelectedKind = hit.kind;
+        m_circuitSelectedId = hit.id;
+    }
+}
+
+void App::selectCircuitAt(const Vec2 &pos)
+{
+    const CircuitEntityRef hit = m_circuit.findEntityAt(pos);
+    m_circuitSelectedKind = hit.kind;
+    m_circuitSelectedId = hit.id;
+}
+
 void App::update(float dt)
 {
     if (m_mode == Mode::Fields)
@@ -386,10 +491,12 @@ void App::draw()
 
     m_window.clear(BACKGROUND_COLOR);
 
-    std::optional<std::pair<Vec2, Vec2>> wirePreview;
-    if (m_tools.isDraggingWire())
-        wirePreview = std::make_pair(m_tools.wireDragStart(), m_mouseWorldMeters);
-    m_renderer.draw(m_window, m_mode, m_world, m_circuit, wirePreview);
+    std::optional<std::pair<Vec2, Vec2>> dragPreview;
+    if (m_mode == Mode::Fields && m_tools.isDraggingWire())
+        dragPreview = std::make_pair(m_tools.wireDragStart(), m_mouseWorldMeters);
+    else if (m_mode == Mode::Circuits && m_tools.isDraggingComponent())
+        dragPreview = std::make_pair(m_tools.componentDragStart(), snapToGrid(m_mouseWorldMeters));
+    m_renderer.draw(m_window, m_mode, m_world, m_circuit, dragPreview);
 
     ImGui::SFML::Render(m_window);
     m_window.display();
@@ -561,17 +668,89 @@ void App::drawToolSettingsPanel(float toolsPanelWidth)
         ImGui::Text("E Field: %.4g N/C @ %.1f deg", field.length(), field.angle() * kRadToDeg);
         ImGui::Text("B Field: %.4g T (%s)", magneticField, magneticField >= 0.0f ? "out of page" : "into page");
     }
+    else if (m_mode == Mode::Circuits && tool == ToolType::PlaceResistor)
+    {
+        ImGui::Text("Left Click and drag to place a resistor");
+        ImGui::Separator();
+        float resistance = m_tools.resistance();
+        if (ImGui::DragFloat("Resistance (Ohm)", &resistance, RESISTANCE_STEP, MIN_RESISTANCE, MAX_RESISTANCE, "%.3g"))
+            m_tools.setResistance(resistance);
+    }
+    else if (m_mode == Mode::Circuits && tool == ToolType::PlaceLightbulb)
+    {
+        ImGui::Text("Left Click and drag to place a lightbulb");
+        ImGui::Separator();
+        float resistance = m_tools.resistance();
+        if (ImGui::DragFloat("Resistance (Ohm)", &resistance, RESISTANCE_STEP, MIN_RESISTANCE, MAX_RESISTANCE, "%.3g"))
+            m_tools.setResistance(resistance);
+    }
+    else if (m_mode == Mode::Circuits && tool == ToolType::PlaceCapacitor)
+    {
+        ImGui::Text("Left Click and drag to place a capacitor");
+        ImGui::Separator();
+        float capacitance = m_tools.capacitance();
+        if (ImGui::DragFloat("Capacitance (F)", &capacitance, CAPACITANCE_STEP, MIN_CAPACITANCE, MAX_CAPACITANCE, "%.3g"))
+            m_tools.setCapacitance(capacitance);
+    }
+    else if (m_mode == Mode::Circuits && tool == ToolType::PlaceInductor)
+    {
+        ImGui::Text("Left Click and drag to place an inductor");
+        ImGui::Separator();
+        float inductance = m_tools.inductance();
+        if (ImGui::DragFloat("Inductance (H)", &inductance, INDUCTANCE_STEP, MIN_INDUCTANCE, MAX_INDUCTANCE, "%.3g"))
+            m_tools.setInductance(inductance);
+    }
+    else if (m_mode == Mode::Circuits && tool == ToolType::PlaceBattery)
+    {
+        ImGui::Text("Left Click and drag to place a battery (start = + terminal)");
+        ImGui::Separator();
+        float emf = m_tools.batteryEmf();
+        if (ImGui::DragFloat("EMF (V)", &emf, EMF_STEP, MIN_EMF, MAX_EMF, "%.2f"))
+            m_tools.setBatteryEmf(emf);
+        float internalResistance = m_tools.batteryInternalResistance();
+        if (ImGui::DragFloat("Internal Resistance (Ohm)", &internalResistance, INTERNAL_RESISTANCE_STEP, MIN_INTERNAL_RESISTANCE, MAX_INTERNAL_RESISTANCE, "%.2f"))
+            m_tools.setBatteryInternalResistance(internalResistance);
+    }
+    else if (m_mode == Mode::Circuits && tool == ToolType::PlaceSwitch)
+    {
+        ImGui::Text("Left Click and drag to place a switch");
+        ImGui::Separator();
+        bool closed = m_tools.switchClosed();
+        if (ImGui::Checkbox("Closed", &closed))
+            m_tools.setSwitchClosed(closed);
+    }
+    else if (m_mode == Mode::Circuits && tool == ToolType::PlaceWire)
+    {
+        ImGui::Text("Left Click and drag to draw a wire");
+    }
+    else if (m_mode == Mode::Circuits && tool == ToolType::PlaceAmmeter)
+    {
+        ImGui::Text("Left Click and drag to place an ammeter (in series)");
+    }
+    else if (m_mode == Mode::Circuits && tool == ToolType::PlaceVoltmeter)
+    {
+        ImGui::Text("Left Click and drag to place a voltmeter (across two points, non-invasive)");
+    }
     else if (tool == ToolType::Move)
     {
-        ImGui::Text("Left Click and drag to move a charge, particle, wire, loop, current loop, or Gaussian surface");
+        if (m_mode == Mode::Fields)
+            ImGui::Text("Left Click and drag to move a charge, particle, wire, loop, current loop, or Gaussian surface");
+        else
+            ImGui::Text("Left Click and drag to move a component or wire");
     }
     else if (tool == ToolType::Erase)
     {
-        ImGui::Text("Left Click to erase a charge, particle, wire, loop, current loop, or Gaussian surface");
+        if (m_mode == Mode::Fields)
+            ImGui::Text("Left Click to erase a charge, particle, wire, loop, current loop, or Gaussian surface");
+        else
+            ImGui::Text("Left Click to erase a component or wire");
     }
     else if (tool == ToolType::Select)
     {
-        ImGui::Text("Left Click to select a charge, particle, wire, loop, current loop, or Gaussian surface");
+        if (m_mode == Mode::Fields)
+            ImGui::Text("Left Click to select a charge, particle, wire, loop, current loop, or Gaussian surface");
+        else
+            ImGui::Text("Left Click to select a component or wire");
     }
     else
     {
@@ -583,7 +762,13 @@ void App::drawToolSettingsPanel(float toolsPanelWidth)
 
 void App::drawPropertiesPanel()
 {
-    if (m_mode != Mode::Fields || m_selectedKind == EntityKind::None)
+    if (m_mode == Mode::Circuits)
+    {
+        drawCircuitPropertiesPanel();
+        return;
+    }
+
+    if (m_selectedKind == EntityKind::None)
         return;
 
     if (m_selectedKind == EntityKind::Charge)
@@ -761,6 +946,91 @@ void App::drawPropertiesPanel()
     }
 }
 
+void App::drawCircuitPropertiesPanel()
+{
+    if (m_circuitSelectedKind == CircuitEntityKind::None)
+        return;
+
+    if (m_circuitSelectedKind == CircuitEntityKind::Component)
+    {
+        Component *comp = m_circuit.findComponent(m_circuitSelectedId);
+        if (!comp)
+        {
+            m_circuitSelectedKind = CircuitEntityKind::None;
+            return;
+        }
+
+        ImGui::SetNextWindowPos(ImVec2(10.0f, 300.0f), ImGuiCond_Once);
+        ImGui::Begin("Properties", nullptr, kMovableFlags);
+        ImGui::Text("%s", comp->typeName().c_str());
+        ImGui::Separator();
+
+        if (Resistor *resistor = dynamic_cast<Resistor *>(comp))
+        {
+            ImGui::DragFloat("Resistance (Ohm)", &resistor->resistance, RESISTANCE_STEP, MIN_RESISTANCE, MAX_RESISTANCE, "%.3g");
+            ImGui::Text("Voltage: %.4g V", resistor->voltage);
+            ImGui::Text("Current: %.4g A", resistor->current);
+        }
+        else if (Capacitor *capacitor = dynamic_cast<Capacitor *>(comp))
+        {
+            ImGui::DragFloat("Capacitance (F)", &capacitor->capacitance, CAPACITANCE_STEP, MIN_CAPACITANCE, MAX_CAPACITANCE, "%.3g");
+            ImGui::Text("Voltage: %.4g V", capacitor->voltage);
+            ImGui::Text("Charge: %.4g C", capacitor->charge);
+            ImGui::Text("Current: %.4g A", capacitor->current);
+        }
+        else if (Inductor *inductor = dynamic_cast<Inductor *>(comp))
+        {
+            ImGui::DragFloat("Inductance (H)", &inductor->inductance, INDUCTANCE_STEP, MIN_INDUCTANCE, MAX_INDUCTANCE, "%.3g");
+            ImGui::Text("Voltage: %.4g V", inductor->voltage);
+            ImGui::Text("Current: %.4g A", inductor->current);
+        }
+        else if (Battery *battery = dynamic_cast<Battery *>(comp))
+        {
+            ImGui::DragFloat("EMF (V)", &battery->emf, EMF_STEP, MIN_EMF, MAX_EMF, "%.2f");
+            ImGui::DragFloat("Internal Resistance (Ohm)", &battery->internalResistance, INTERNAL_RESISTANCE_STEP, MIN_INTERNAL_RESISTANCE, MAX_INTERNAL_RESISTANCE, "%.2f");
+            ImGui::Text("Terminal Voltage: %.4g V", battery->voltage);
+            ImGui::Text("Current: %.4g A", battery->current);
+        }
+        else if (Switch *sw = dynamic_cast<Switch *>(comp))
+        {
+            ImGui::Checkbox("Closed", &sw->closed);
+            ImGui::Text("Voltage: %.4g V", sw->voltage);
+            ImGui::Text("Current: %.4g A", sw->current);
+        }
+        else if (Probe *probe = dynamic_cast<Probe *>(comp))
+        {
+            if (probe->kind == Probe::Kind::Ammeter)
+                ImGui::Text("Current: %.4g A", probe->current);
+            else
+                ImGui::Text("Voltage: %.4g V", probe->voltage);
+        }
+
+        ImGui::Text("A: %s m", comp->posA.toString().c_str());
+        ImGui::Text("B: %s m", comp->posB.toString().c_str());
+        ImGui::Checkbox("Show Label", &comp->showLabel);
+
+        ImGui::End();
+    }
+    else if (m_circuitSelectedKind == CircuitEntityKind::Wire)
+    {
+        CircuitWire *wire = m_circuit.findWire(m_circuitSelectedId);
+        if (!wire)
+        {
+            m_circuitSelectedKind = CircuitEntityKind::None;
+            return;
+        }
+
+        ImGui::SetNextWindowPos(ImVec2(10.0f, 300.0f), ImGuiCond_Once);
+        ImGui::Begin("Properties", nullptr, kMovableFlags);
+        ImGui::Text("Wire");
+        ImGui::Separator();
+        ImGui::Text("Current: %.4g A", wire->current);
+        ImGui::Text("Start: %s m", wire->start.toString().c_str());
+        ImGui::Text("End: %s m", wire->end.toString().c_str());
+        ImGui::End();
+    }
+}
+
 void App::drawSettingsPanel()
 {
     ImGui::Begin("Simulation Settings", &m_settingsOpen, kMovableFlags | ImGuiWindowFlags_NoMove);
@@ -772,6 +1042,18 @@ void App::drawSettingsPanel()
     if (ImGui::RadioButton("Circuits", !fieldsMode))
         m_mode = Mode::Circuits;
 
+    ImGui::Separator();
+    ImGui::Text("Current Flow:");
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Off", m_renderer.currentFlowDisplay == CurrentFlowDisplay::Off))
+        m_renderer.currentFlowDisplay = CurrentFlowDisplay::Off;
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Conventional", m_renderer.currentFlowDisplay == CurrentFlowDisplay::Conventional))
+        m_renderer.currentFlowDisplay = CurrentFlowDisplay::Conventional;
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Electron", m_renderer.currentFlowDisplay == CurrentFlowDisplay::Electron))
+        m_renderer.currentFlowDisplay = CurrentFlowDisplay::Electron;
+
     if (fieldsMode)
     {
         ImGui::Separator();
@@ -779,16 +1061,6 @@ void App::drawSettingsPanel()
         ImGui::Checkbox("Field Lines", &m_renderer.showFieldLines);
         ImGui::Checkbox("Equipotential Lines", &m_renderer.showEquipotentials);
         ImGui::Checkbox("Magnetic Field", &m_renderer.showMagneticField);
-        ImGui::Text("Current Flow:");
-        ImGui::SameLine();
-        if (ImGui::RadioButton("Off", m_renderer.currentFlowDisplay == CurrentFlowDisplay::Off))
-            m_renderer.currentFlowDisplay = CurrentFlowDisplay::Off;
-        ImGui::SameLine();
-        if (ImGui::RadioButton("Conventional", m_renderer.currentFlowDisplay == CurrentFlowDisplay::Conventional))
-            m_renderer.currentFlowDisplay = CurrentFlowDisplay::Conventional;
-        ImGui::SameLine();
-        if (ImGui::RadioButton("Electron", m_renderer.currentFlowDisplay == CurrentFlowDisplay::Electron))
-            m_renderer.currentFlowDisplay = CurrentFlowDisplay::Electron;
         ImGui::Separator();
         ImGui::Checkbox("Uniform B Field", &m_world.uniformField().enabled);
         if (m_world.uniformField().enabled)
@@ -811,6 +1083,26 @@ void App::drawSettingsPanel()
             m_world.reset();
             m_grabbedKind = EntityKind::None;
             m_selectedKind = EntityKind::None;
+        }
+    }
+    else
+    {
+        ImGui::Separator();
+        if (ImGui::Button("Load Basic Resistor Circuit Preset"))
+            Presets::loadBasicResistorCircuit(m_circuit);
+        if (ImGui::Button("Load Lightbulb Circuit Preset"))
+            Presets::loadLightbulbCircuit(m_circuit);
+        if (ImGui::Button("Load Simple RC Circuit Preset"))
+            Presets::loadSimpleRCCircuit(m_circuit);
+        if (ImGui::Button("Load Simple LR Circuit Preset"))
+            Presets::loadSimpleLRCircuit(m_circuit);
+        if (ImGui::Button("Load Simple LC Circuit Preset"))
+            Presets::loadSimpleLCCircuit(m_circuit);
+        if (ImGui::Button("Reset Simulation"))
+        {
+            m_circuit.reset();
+            m_circuitGrabbedKind = CircuitEntityKind::None;
+            m_circuitSelectedKind = CircuitEntityKind::None;
         }
     }
 

@@ -1,17 +1,27 @@
 #include "core/Tools.hpp"
 
 #include "Config.hpp"
+#include "circuits/Battery.hpp"
+#include "circuits/Capacitor.hpp"
 #include "circuits/CircuitGraph.hpp"
+#include "circuits/Inductor.hpp"
+#include "circuits/Lightbulb.hpp"
+#include "circuits/Probe.hpp"
+#include "circuits/Resistor.hpp"
+#include "circuits/Switch.hpp"
 #include "core/World.hpp"
 #include "engine/FieldMath.hpp"
 #include "induction/MovingLoop.hpp"
+#include "math/Util.hpp"
 
 Tools::Tools()
     : m_activeTool(ToolType::Select), m_chargeMagnitude(DEFAULT_CHARGE_MAGNITUDE), m_gaussianRadius(GAUSSIAN_SURFACE_DEFAULT_RADIUS),
       m_particleChargeMagnitude(DEFAULT_PARTICLE_CHARGE_MAGNITUDE), m_particleChargePositive(true), m_particleMass(DEFAULT_PARTICLE_MASS), m_particleSpeed(DEFAULT_PARTICLE_SPEED),
       m_wireCurrent(DEFAULT_WIRE_CURRENT), m_wireDragActive(false), m_wireDragStart(0.0f, 0.0f),
       m_loopRadius(DEFAULT_LOOP_RADIUS), m_loopTurns(DEFAULT_LOOP_TURNS), m_loopAngularVelocity(DEFAULT_LOOP_ANGULAR_VELOCITY),
-      m_currentLoopRadius(DEFAULT_CURRENT_LOOP_RADIUS), m_currentLoopCurrent(DEFAULT_CURRENT_LOOP_CURRENT), m_currentLoopTurns(DEFAULT_CURRENT_LOOP_TURNS)
+      m_currentLoopRadius(DEFAULT_CURRENT_LOOP_RADIUS), m_currentLoopCurrent(DEFAULT_CURRENT_LOOP_CURRENT), m_currentLoopTurns(DEFAULT_CURRENT_LOOP_TURNS),
+      m_resistance(DEFAULT_RESISTANCE), m_capacitance(DEFAULT_CAPACITANCE), m_inductance(DEFAULT_INDUCTANCE), m_batteryEmf(DEFAULT_EMF), m_batteryInternalResistance(DEFAULT_INTERNAL_RESISTANCE), m_switchClosed(true),
+      m_componentDragActive(false), m_componentDragStart(0.0f, 0.0f)
 {
 }
 
@@ -23,7 +33,8 @@ ToolType Tools::activeTool() const
 void Tools::setActiveTool(ToolType tool)
 {
     m_activeTool = tool;
-    m_wireDragActive = false; // switching tools mid-drag abandons the in-progress wire
+    m_wireDragActive = false;      // switching tools mid-drag abandons the in-progress wire
+    m_componentDragActive = false; // ditto for an in-progress Circuits component/wire drag
 }
 
 float Tools::chargeMagnitude() const { return m_chargeMagnitude; }
@@ -71,6 +82,74 @@ void Tools::finishWireDrag(const Vec2 &worldPos, World &world)
     if (m_wireDragActive && (worldPos - m_wireDragStart).length() >= MIN_WIRE_LENGTH)
         world.wires().emplace_back(m_wireDragStart, worldPos, m_wireCurrent, world.allocateEntityId());
     m_wireDragActive = false;
+}
+
+float Tools::resistance() const { return m_resistance; }
+void Tools::setResistance(float resistance) { m_resistance = resistance; }
+float Tools::capacitance() const { return m_capacitance; }
+void Tools::setCapacitance(float capacitance) { m_capacitance = capacitance; }
+float Tools::inductance() const { return m_inductance; }
+void Tools::setInductance(float inductance) { m_inductance = inductance; }
+float Tools::batteryEmf() const { return m_batteryEmf; }
+void Tools::setBatteryEmf(float emf) { m_batteryEmf = emf; }
+float Tools::batteryInternalResistance() const { return m_batteryInternalResistance; }
+void Tools::setBatteryInternalResistance(float resistance) { m_batteryInternalResistance = resistance; }
+bool Tools::switchClosed() const { return m_switchClosed; }
+void Tools::setSwitchClosed(bool closed) { m_switchClosed = closed; }
+
+bool Tools::isDraggingComponent() const { return m_componentDragActive; }
+Vec2 Tools::componentDragStart() const { return m_componentDragStart; }
+
+void Tools::beginComponentDrag(const Vec2 &worldPos)
+{
+    m_componentDragActive = true;
+    m_componentDragStart = snapToGrid(worldPos);
+}
+
+void Tools::finishComponentDrag(const Vec2 &worldPos, CircuitGraph &circuit)
+{
+    if (!m_componentDragActive)
+        return;
+    m_componentDragActive = false;
+
+    const Vec2 start = m_componentDragStart;
+    const Vec2 end = snapToGrid(worldPos);
+    if ((end - start).length() < MIN_WIRE_LENGTH)
+        return;
+
+    switch (m_activeTool)
+    {
+    case ToolType::PlaceResistor:
+        circuit.addComponent<Resistor>(start, end, m_resistance, circuit.allocateId());
+        break;
+    case ToolType::PlaceLightbulb:
+        // Shares the Resistor tool's resistance default - electrically the same component.
+        circuit.addComponent<Lightbulb>(start, end, m_resistance, circuit.allocateId());
+        break;
+    case ToolType::PlaceCapacitor:
+        circuit.addComponent<Capacitor>(start, end, m_capacitance, circuit.allocateId());
+        break;
+    case ToolType::PlaceInductor:
+        circuit.addComponent<Inductor>(start, end, m_inductance, circuit.allocateId());
+        break;
+    case ToolType::PlaceBattery:
+        circuit.addComponent<Battery>(start, end, m_batteryEmf, m_batteryInternalResistance, circuit.allocateId());
+        break;
+    case ToolType::PlaceSwitch:
+        circuit.addComponent<Switch>(start, end, m_switchClosed, circuit.allocateId());
+        break;
+    case ToolType::PlaceAmmeter:
+        circuit.addComponent<Probe>(start, end, Probe::Kind::Ammeter, circuit.allocateId());
+        break;
+    case ToolType::PlaceVoltmeter:
+        circuit.addComponent<Probe>(start, end, Probe::Kind::Voltmeter, circuit.allocateId());
+        break;
+    case ToolType::PlaceWire:
+        circuit.wires().emplace_back(start, end, circuit.allocateId());
+        break;
+    default:
+        break;
+    }
 }
 
 void Tools::onClick(const Vec2 &worldPos, World &world)
@@ -121,7 +200,12 @@ void Tools::onClick(const Vec2 &worldPos, World &world)
 
 void Tools::onClick(const Vec2 &worldPos, CircuitGraph &circuit)
 {
-    // TODO(Phase 5): create/select components in `circuit` based on m_activeTool
-    (void)worldPos;
-    (void)circuit;
+    // Move/Select are handled in App; every placement tool needs two points, so it goes
+    // through beginComponentDrag/finishComponentDrag instead.
+    if (m_activeTool == ToolType::Erase)
+    {
+        const CircuitEntityRef hit = circuit.findEntityAt(worldPos);
+        if (hit.kind != CircuitEntityKind::None)
+            circuit.removeEntity(hit.kind, hit.id);
+    }
 }

@@ -20,7 +20,9 @@ enum class ToolType
 
     // Circuits mode
     PlaceResistor,
+    PlaceLightbulb,
     PlaceCapacitor,
+    PlaceInductor,
     PlaceBattery,
     PlaceSwitch,
     PlaceWire,
@@ -83,6 +85,26 @@ public:
     void beginWireDrag(const Vec2 &worldPos);
     void finishWireDrag(const Vec2 &worldPos, World &world);
 
+    float resistance() const;
+    void setResistance(float resistance);
+    float capacitance() const;
+    void setCapacitance(float capacitance);
+    float inductance() const;
+    void setInductance(float inductance);
+    float batteryEmf() const;
+    void setBatteryEmf(float emf);
+    float batteryInternalResistance() const;
+    void setBatteryInternalResistance(float resistance);
+    bool switchClosed() const;
+    void setSwitchClosed(bool closed);
+
+    // Every Circuits component/wire tool places by click-drag (start on press, end on
+    // release), same shape as PlaceCurrentWire above - both endpoints snap to the grid.
+    bool isDraggingComponent() const;
+    Vec2 componentDragStart() const;
+    void beginComponentDrag(const Vec2 &worldPos);
+    void finishComponentDrag(const Vec2 &worldPos, CircuitGraph &circuit);
+
 private:
     ToolType m_activeTool;
     float m_chargeMagnitude;
@@ -104,4 +126,14 @@ private:
     float m_currentLoopRadius;
     float m_currentLoopCurrent;
     int m_currentLoopTurns;
+
+    float m_resistance;
+    float m_capacitance;
+    float m_inductance;
+    float m_batteryEmf;
+    float m_batteryInternalResistance;
+    bool m_switchClosed;
+
+    bool m_componentDragActive;
+    Vec2 m_componentDragStart;
 };

@@ -180,24 +180,51 @@
 // CIRCUITS CONFIGURATION
 #define MIN_RESISTANCE 1.0f       // Ohm
 #define MAX_RESISTANCE 1.0e6f     // Ohm
-#define DEFAULT_RESISTANCE 100.0f // Ohm
+#define DEFAULT_RESISTANCE 100.0f // Ohm, paired with DEFAULT_CAPACITANCE for a ~2s RC time constant at a punchy ~90mA
+#define RESISTANCE_STEP 10.0f     // Ohm, Tool Settings drag-slider step
 
-#define MIN_CAPACITANCE 1.0e-9f     // F
-#define MAX_CAPACITANCE 1.0e-3f     // F
-#define DEFAULT_CAPACITANCE 1.0e-6f // F
+#define MIN_CAPACITANCE 1.0e-9f    // F
+#define MAX_CAPACITANCE 0.1f       // F
+#define DEFAULT_CAPACITANCE 2e-2f  // F
+#define CAPACITANCE_STEP 2.0e-3f   // F, Tool Settings drag-slider step
 
-#define MIN_INDUCTANCE 1.0e-6f    // H
-#define MAX_INDUCTANCE 10.0f      // H
-#define DEFAULT_INDUCTANCE 1.0e-3f // H
+// A lumped RL element - no coupling to Fields mode's spatial B field (see induction/, which
+// models a real coil's own generated/enclosed field separately).
+#define MIN_INDUCTANCE 1.0e-3f  // H
+#define MAX_INDUCTANCE 10.0f    // H
+#define DEFAULT_INDUCTANCE 1.0f // H
+#define INDUCTANCE_STEP 0.05f   // H, Tool Settings drag-slider step
 
 #define MIN_EMF 0.0f      // V
 #define MAX_EMF 24.0f     // V
 #define DEFAULT_EMF 9.0f  // V
-#define DEFAULT_INTERNAL_RESISTANCE 1.0f // Ohm
+#define EMF_STEP 0.5f     // V, Tool Settings drag-slider step
+
+#define MIN_INTERNAL_RESISTANCE 0.0f       // Ohm
+#define MAX_INTERNAL_RESISTANCE 100.0f     // Ohm
+#define DEFAULT_INTERNAL_RESISTANCE 1.0f   // Ohm
+#define INTERNAL_RESISTANCE_STEP 0.5f      // Ohm, Tool Settings drag-slider step
 
 #define WIRE_COLOR sf::Color(230, 230, 230, 255)
 #define COMPONENT_COLOR sf::Color(200, 200, 200, 255)
 #define PROBE_COLOR sf::Color(255, 210, 80, 255)
+#define OPEN_SWITCH_COLOR sf::Color(220, 90, 90, 255)
+#define COMPONENT_LABEL_COLOR sf::Color(180, 210, 255, 255)
+
+// A component's schematic symbol is drawn centered on its posA-posB span, scaled down on
+// short spans so it never overflows past the terminals.
+#define COMPONENT_SYMBOL_HALF_SIZE 0.35f // meters, half-width of a component's drawn symbol
+
+// Solved circuit currents are realistically mA-to-low-A scale, unlike Fields' wires (up to
+// MAX_WIRE_CURRENT = 20A) - a separate half-saturation point keeps the flow-marker
+// animation visibly responsive at circuit scale instead of reading as nearly static.
+#define CIRCUIT_CURRENT_FLOW_SATURATION 0.2f // A, half-saturation point for circuit marker-speed scaling
+
+// Lightbulb: electrically a plain Resistor (see circuits/Lightbulb.hpp); the bulb glows by
+// interpolating toward LIGHTBULB_GLOW_COLOR as dissipated power (V*I) approaches saturation.
+#define LIGHTBULB_POWER_SATURATION 0.5f // W, half-saturation point for glow-brightness scaling
+#define LIGHTBULB_OFF_COLOR sf::Color(90, 85, 60, 255)
+#define LIGHTBULB_GLOW_COLOR sf::Color(255, 235, 120, 255)
 
 // LOGGING & GRAPHING CONFIGURATION
 #define LOG_DIRECTORY "logs"

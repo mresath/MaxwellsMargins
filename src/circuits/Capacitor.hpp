@@ -7,9 +7,9 @@
 class Capacitor : public Component
 {
 public:
-    Capacitor(int nodeA, int nodeB, float capacitance) : Component(nodeA, nodeB), capacitance(capacitance) {}
+    Capacitor(Vec2 posA, Vec2 posB, float capacitance, int id) : Component(posA, posB, id), capacitance(capacitance) {}
 
-    float capacitance; // Farad
+    float capacitance;   // Farad
     float charge = 0.0f; // Coulombs, current stored charge
 
     std::string typeName() const override { return "Capacitor"; }

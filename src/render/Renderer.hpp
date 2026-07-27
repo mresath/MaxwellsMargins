@@ -34,10 +34,11 @@ class Renderer
 public:
     Renderer();
 
-    // wirePreview, when set, is the in-progress PlaceCurrentWire drag (start, current
-    // cursor position), drawn even before the wire actually exists in World.
+    // dragPreview, when set, is the in-progress two-point placement drag (start, current
+    // cursor position) for whichever mode is active - Fields' PlaceCurrentWire or one of
+    // Circuits' component/wire tools - drawn even before the entity actually exists.
     void draw(sf::RenderWindow &window, Mode mode, const World &world, const CircuitGraph &circuit,
-              const std::optional<std::pair<Vec2, Vec2>> &wirePreview = std::nullopt) const;
+              const std::optional<std::pair<Vec2, Vec2>> &dragPreview = std::nullopt) const;
 
     bool showFieldVectors = true;
     bool showFieldLines = true;
@@ -47,8 +48,11 @@ public:
 
 private:
     void drawGridlines(sf::RenderWindow &window) const;
-    void drawWorld(sf::RenderWindow &window, const World &world, const std::optional<std::pair<Vec2, Vec2>> &wirePreview) const;
-    void drawCircuit(sf::RenderWindow &window, const CircuitGraph &circuit) const;
+    void drawWorld(sf::RenderWindow &window, const World &world, const std::optional<std::pair<Vec2, Vec2>> &dragPreview) const;
+    void drawCircuit(sf::RenderWindow &window, const CircuitGraph &circuit, const std::optional<std::pair<Vec2, Vec2>> &dragPreview) const;
+
+    void drawCircuitWires(sf::RenderWindow &window, const CircuitGraph &circuit, const std::optional<std::pair<Vec2, Vec2>> &dragPreview) const;
+    void drawCircuitComponents(sf::RenderWindow &window, const CircuitGraph &circuit) const;
 
     void drawCharges(sf::RenderWindow &window, const std::vector<PointCharge> &charges) const;
     void drawFieldVectors(sf::RenderWindow &window, const std::vector<PointCharge> &charges) const;

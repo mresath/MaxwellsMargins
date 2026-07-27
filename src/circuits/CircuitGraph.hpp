@@ -3,11 +3,27 @@
 #include <memory>
 #include <vector>
 
+#include "circuits/CircuitWire.hpp"
 #include "circuits/Component.hpp"
+#include "math/Vec2.hpp"
 
-// Container for the Circuits-mode scene: a node/component graph solved each step via
-// modified nodal analysis (Kirchhoff's current/voltage laws), with RC/RL transients
-// integrated over time using engine/Solver.
+enum class CircuitEntityKind
+{
+    None,
+    Component,
+    Wire
+};
+
+struct CircuitEntityRef
+{
+    CircuitEntityKind kind = CircuitEntityKind::None;
+    int id = -1;
+};
+
+// Container for the Circuits-mode scene (mirrors World's role for Fields mode): components
+// and wires placed on the schematic grid, solved each step via modified nodal analysis
+// (Kirchhoff's current/voltage laws), with capacitor charge integrated over time using
+// engine/Solver. See CircuitGraph.cpp for the node-reduction and solve algorithm.
 class CircuitGraph
 {
 public:
@@ -15,6 +31,7 @@ public:
 
     void reset();
     void update(float dt);
+    float simTime() const;
 
     template <typename T, typename... Args>
     T &addComponent(Args &&...args)
@@ -24,11 +41,24 @@ public:
     }
 
     std::vector<std::unique_ptr<Component>> &components();
-    int nodeCount() const;
+    const std::vector<std::unique_ptr<Component>> &components() const;
+    std::vector<CircuitWire> &wires();
+    const std::vector<CircuitWire> &wires() const;
 
-    // TODO(Phase 5): solve() running modified nodal analysis over m_components
+    int allocateId();
+
+    // Id stays valid across insertions/erasures elsewhere, unlike a vector index - so App
+    // can hold a selection/grab across frames safely (mirrors World::EntityRef).
+    CircuitEntityRef findEntityAt(const Vec2 &pos) const;
+    void removeEntity(CircuitEntityKind kind, int id);
+    Component *findComponent(int id);
+    CircuitWire *findWire(int id);
 
 private:
+    void solve(float dt);
+
     std::vector<std::unique_ptr<Component>> m_components;
-    int m_nodeCount;
+    std::vector<CircuitWire> m_wires;
+    float m_simTime;
+    int m_nextId;
 };

@@ -26,3 +26,11 @@ inline float distanceToSegment(const Vec2 &point, const Vec2 &segStart, const Ve
     t = std::fmax(0.0f, std::fmin(1.0f, t));
     return (point - (segStart + segment * t)).length();
 }
+
+// Snaps to the nearest minor-gridline intersection - the schematic grid components/wires
+// are placed on in Circuits mode, so two terminals landing on the same point are the same
+// electrical node.
+inline Vec2 snapToGrid(const Vec2 &pos, float spacing = GRID_MINOR_SPACING)
+{
+    return Vec2(std::round(pos.x / spacing) * spacing, std::round(pos.y / spacing) * spacing);
+}
