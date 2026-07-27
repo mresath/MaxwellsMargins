@@ -2,6 +2,7 @@
 
 #include <SFML/Graphics.hpp>
 
+#include <functional>
 #include <map>
 #include <string>
 
@@ -41,6 +42,11 @@ private:
     void selectAt(const Vec2 &pos);
     void beginCircuitGrab(const Vec2 &pos);
     void selectCircuitAt(const Vec2 &pos);
+
+    // Draws a "Graph" checkbox (ImGui::SameLine of the caller's own stat line) that toggles
+    // whether `quantityName` is logged/graphed; `valueGetter` re-reads its live value each
+    // tick by id, so it stays valid even if the entity is later moved or erased.
+    void drawGraphToggle(const std::string &quantityName, const std::string &imguiId, const std::function<double()> &valueGetter);
 
     sf::RenderWindow m_window;
     sf::View m_view;

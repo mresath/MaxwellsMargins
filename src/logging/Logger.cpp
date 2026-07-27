@@ -2,7 +2,11 @@
 
 #include "Config.hpp"
 
+#include <nlohmann/json.hpp>
+
+#include <cstdlib>
 #include <filesystem>
+#include <fstream>
 
 namespace
 {
@@ -26,18 +30,46 @@ Logger::Logger()
 
 void Logger::record(float simTime, const std::map<std::string, double> &namedValues)
 {
-    // TODO(Phase 6): append to history, keyed by simTime
-    (void)simTime;
-    (void)namedValues;
+    m_history[simTime] = namedValues;
+
+    // A session left running indefinitely would otherwise grow this unbounded - drop the
+    // oldest sample(s) past the cap, same spirit as the trajectory/EMF trace caps elsewhere.
+    while (m_history.size() > LOG_MAX_SAMPLES)
+        m_history.erase(m_history.begin());
 }
 
 void Logger::reset()
 {
-    // TODO(Phase 6): clear history
+    m_history.clear();
 }
 
 void Logger::save(const std::string &path) const
 {
-    // TODO(Phase 6): write JSON log to `path` (nlohmann::json)
-    (void)path;
+    nlohmann::json j;
+    for (const auto &[time, namedValues] : m_history)
+    {
+        nlohmann::json &sample = j[std::to_string(time)];
+        for (const auto &[name, value] : namedValues)
+            sample[name] = value;
+    }
+
+    std::ofstream file(path);
+    if (file.is_open())
+        file << j.dump(4);
+}
+
+const std::map<float, std::map<std::string, double>> &Logger::history() const
+{
+    return m_history;
+}
+
+void Logger::openLogFolder() const
+{
+#if defined(_WIN32)
+    std::system(("explorer " + std::string(LOG_DIRECTORY)).c_str());
+#elif defined(__APPLE__)
+    std::system(("open " + std::string(LOG_DIRECTORY)).c_str());
+#elif defined(__linux__)
+    std::system(("xdg-open " + std::string(LOG_DIRECTORY)).c_str());
+#endif
 }

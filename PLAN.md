@@ -65,12 +65,13 @@ under `vendor/SFML`).
 
 ## Current status
 
-Phases 0-5 are complete: app shell, electrostatics, magnetism (uniform field, current
+All six phases are complete: app shell, electrostatics, magnetism (uniform field, current
 wires, charged particles, including their mutual E/B interaction via `World`'s global-field
-query methods), induction (moving/rotating loops, Faraday/Lenz, the generator demo), and
+query methods), induction (moving/rotating loops, Faraday/Lenz, the generator demo),
 circuits (resistor/lightbulb/capacitor/inductor/battery/switch/probe components solved via
-modified nodal analysis, with stable RC/RL/LC transients). Cross-cutting polish (Phase 6)
-remains.
+modified nodal analysis, with stable RC/RL/LC transients), and cross-cutting polish
+(per-quantity logging/graphing via `Logger`/`Grapher`, plus unit-display and overlay-toggle
+QA audits).
 
 ## Phases
 
@@ -130,6 +131,7 @@ remains.
 - Unit display pass: confirm SI units (C, N/C, V, Ohm, F, T, H) are shown consistently everywhere adjustable magnitudes appear.
 - Toggle-able overlays: field vectors, field lines, equipotentials, current-flow animation (already wired incrementally per-phase; this is the consistency/QA pass).
 - App icon: generate `.icns`/`.ico` from `src/assets/logo/logo.png` and wire into `resources/mac` and `resources/windows` (currently placeholder-only).
+- Acceptance: checking a live readout's `Graph` checkbox and pressing `G` opens a matplot++ plot of that quantity over time, matching what the Properties panel itself displays; `Save Graph as Image`/`Save Log` write into `graphs/`/`logs/`; the unit-display and overlay-toggle audits are a manual grep-and-review pass (documented in the Open Decisions Log), not new code, since both were already consistent going into Phase 6.
 
 ## Open decisions log
 
@@ -148,6 +150,10 @@ remains.
 - **`Lightbulb` is a `Resistor` subclass, not a sibling class**: electrically identical (a simplified fixed-resistance filament model, not a physically accurate nonlinear one), so `CircuitGraph::solve()`'s existing `dynamic_cast<Resistor*>` handles it with zero Lightbulb-specific code. Only its schematic symbol (a power-dependent glow) and `typeName()` differ - callers that need the distinction (rendering, Tool Settings) check `Lightbulb` first.
 - **Component labels default off, toggled individually per component** (`Component::showLabel`) rather than a single global on/off: a schematic with several components otherwise crowds/overlaps floating V/I/R/Q text. Each circuit preset explicitly turns on the one component its story is actually about (e.g. the capacitor in the RC preset).
 - **World-space text labels use `ImGui::GetBackgroundDrawList()`, not `GetForegroundDrawList()`**: the foreground list renders above every ImGui window including the Settings/Properties modals, so labels punched through on top of an open modal instead of being properly occluded by it.
+- **Logger records only currently graph-selected quantities, not every entity's every property every tick**: Fields and Circuits entities are heterogeneous enough (charges, particles, wires, loops, six component types) that a fully generic "snapshot everything" pass would need its own reflection-like enumerator for comparatively little benefit, since the log's only consumer inside the app is the Grapher. The tradeoff is that a quantity only has history from the moment it's selected onward (no retroactive backfill), which is expected, not a bug.
+- **A selected quantity is stored as a name plus a `std::function<double()>` getter, not a raw pointer into the entity**: the getter re-looks-up the entity by id each call (mirroring every other id-keyed lookup in the app), so a quantity selected on an entity that's later moved is unaffected and one that's later erased just reads back `NaN` (a gap in the plotted line) instead of dereferencing a dangling pointer.
+- **A quantity's canonical name (e.g. `"Resistor #7 - Voltage (V)"`) doubles as both the Grapher's selection key and the exported plot's legend label**: avoids needing a separate units-lookup table (unlike NN's `BodyKeyUnit`), since MM has no single struct spanning every graphable entity type to hang such a switch off of.
+- **Unit display and overlay-toggle QA passes required no code changes**: both were audited (grepping every ImGui label/overlay flag against its corresponding Settings/Properties control) and found already fully consistent, a result of the per-phase discipline already followed rather than a gap needing a dedicated fix.
 
 ## Checklist
 
@@ -215,8 +221,8 @@ remains.
 
 ### Phase 6 - Cross-cutting polish
 
-- [ ] `logging/Logger`: JSON state logging, selectable per-quantity
-- [ ] `graphing/Grapher`: matplot++-based plotting, save-as-image
-- [ ] Unit display pass (SI units shown consistently: C, N/C, V, Ohm, F, T, H)
-- [ ] Toggle-able overlay consistency/QA pass (field vectors, field lines, equipotentials, current-flow animation)
+- [x] `logging/Logger`: JSON state logging, selectable per-quantity
+- [x] `graphing/Grapher`: matplot++-based plotting, save-as-image
+- [x] Unit display pass (SI units shown consistently: C, N/C, V, Ohm, F, T, H) - audited, already consistent
+- [x] Toggle-able overlay consistency/QA pass (field vectors, field lines, equipotentials, current-flow animation) - audited, already consistent
 - [x] App icon: generate `.icns`/`.ico` from `src/assets/logo/logo.png`, wire into `resources/mac`/`resources/windows`

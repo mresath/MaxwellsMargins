@@ -13,7 +13,12 @@ public:
     void record(float simTime, const std::map<std::string, double> &namedValues);
     void reset();
     void save(const std::string &path) const;
+    void openLogFolder() const;
+
+    // time -> {quantity name -> value}, the full recorded history - Grapher reads this
+    // directly to extract a per-quantity time series rather than duplicating storage.
+    const std::map<float, std::map<std::string, double>> &history() const;
 
 private:
-    // TODO(Phase 6): time -> {quantity name -> value} history
+    std::map<float, std::map<std::string, double>> m_history;
 };

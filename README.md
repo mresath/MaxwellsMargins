@@ -33,7 +33,7 @@ A physics simulator/playground with the following features:
   - The minor and major gridlines represent 1m and 5m respectively
 - Object Selection & Properties Panel
 - Presets
-- Quantity Logging and Graphing for Analysis (In Development)
+- Quantity Logging and Graphing for Analysis
 
 See [PLAN.md](PLAN.md) for the phased implementation roadmap and [SCIENCE.md](SCIENCE.md) for the underlying math/physics.
 
@@ -52,10 +52,11 @@ Not yet released. To build from source, see [Building](#building) below.
 - `RMB + drag`: pan view
 - `Mouse wheel`: zoom
 - `MMB`: reset view
-- `Esc`: toggle settings
+- `Esc`: toggle settings (closes an open graph first, if one is open)
 - `P`: pause/resume simulation
+- `G`: open/close the graph of currently-selected quantities (disabled while Settings is open)
 
-UI panels: `Stats`, `Tools`, `Tool Settings`, `Properties` (appears once something is selected - in Fields mode a charge, particle, wire, loop, or Gaussian surface; in Circuits mode a component or wire), `Settings` (`Esc`, holds the mode tabs, presets, and overlay toggles)
+UI panels: `Stats`, `Tools`, `Tool Settings`, `Properties` (appears once something is selected - in Fields mode a charge, particle, wire, loop, or Gaussian surface; in Circuits mode a component or wire), `Settings` (`Esc`, holds the mode tabs, presets, overlay toggles, and the logging/graphing controls)
 
 ## Electrostatics
 
@@ -96,6 +97,13 @@ UI panels: `Stats`, `Tools`, `Tool Settings`, `Properties` (appears once somethi
 - Ammeters read a solved branch current directly (no disturbance to the circuit); voltmeters read two node potentials without being wired into the solve at all
 - Each component's live V/I/R/Q label is off by default and toggled individually from its own Properties panel, so a busy schematic doesn't turn into overlapping text
 - The same `Current Flow` (Off/Conventional/Electron) setting from Magnetism animates wires and component leads here too
+
+## Logging & Graphing
+
+- Any live-readout number in a Properties panel (a Gaussian surface's enclosed charge, a particle's speed, a moving loop's induced EMF, a circuit component's voltage/current/charge) has its own `Graph` checkbox right next to it - checking it starts logging that specific quantity every update tick
+- `G` opens a graph of every currently-checked quantity (matplot++/gnuplot, one line per quantity, legended by name) - `Esc` or `G` again closes it; the simulation pauses while it's open, same as the Settings modal
+- Settings holds the rest of the controls: how many quantities are currently selected, `Clear Selection`, `Save Graph as Image` (while a graph is open) into `graphs/`, and `Save Log`/`Open Log Folder`/`Clear Log` for the full recorded history as JSON into `logs/`
+- Loading a preset or hitting `Reset Simulation` clears the log and selection along with the scene, since a graphed quantity belongs to an entity that no longer exists otherwise
 
 ## Presets
 

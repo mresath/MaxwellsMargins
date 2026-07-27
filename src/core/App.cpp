@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include <ctime>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -130,6 +131,18 @@ const char *iconTextureFor(ToolType tool)
     }
 }
 
+// Canonical name for a graphable quantity - doubles as both the Grapher's selection key and
+// the exported plot's legend label, so it needs no separate units-lookup table.
+std::string quantityLabel(const std::string &type, int id, const std::string &property, const std::string &unit)
+{
+    return type + " #" + std::to_string(id) + " - " + property + " (" + unit + ")";
+}
+
+std::string timestampedFilename(const std::string &directory, const std::string &prefix, const std::string &extension)
+{
+    return directory + "/" + prefix + "_" + std::to_string(std::time(nullptr)) + "." + extension;
+}
+
 std::vector<ToolType> toolsForMode(Mode mode)
 {
     if (mode == Mode::Fields)
@@ -219,7 +232,7 @@ int App::run()
 
         ImGui::SFML::Update(m_window, dtTime);
 
-        if (!m_settingsOpen && !m_paused)
+        if (!m_settingsOpen && !m_paused && !m_grapher.isGraphOpen())
         {
             m_accumulator += std::min(rawFrameTime, MAX_DT);
             const float fixedDt = 1.0f / CALC_FREQ;
@@ -266,7 +279,17 @@ void App::processEvents()
         {
             if (keyReleased->code == sf::Keyboard::Key::Escape)
             {
-                m_settingsOpen = !m_settingsOpen;
+                // A graph closes on Escape before the settings modal would toggle, so it
+                // takes exactly one press to get back to the canvas from either state.
+                if (m_grapher.isGraphOpen())
+                    m_grapher.closeGraph();
+                else
+                    m_settingsOpen = !m_settingsOpen;
+            }
+            else if (keyReleased->code == sf::Keyboard::Key::G)
+            {
+                if (!m_settingsOpen)
+                    m_grapher.toggleGraph(m_logger);
             }
             else if (keyReleased->code == sf::Keyboard::Key::P)
             {
@@ -472,12 +495,31 @@ void App::selectCircuitAt(const Vec2 &pos)
     m_circuitSelectedId = hit.id;
 }
 
+void App::drawGraphToggle(const std::string &quantityName, const std::string &imguiId, const std::function<double()> &valueGetter)
+{
+    ImGui::SameLine();
+    bool graphed = m_grapher.isSelected(quantityName);
+    if (ImGui::Checkbox(("Graph##" + imguiId).c_str(), &graphed))
+    {
+        if (graphed)
+            m_grapher.select(quantityName, valueGetter);
+        else
+            m_grapher.deselect(quantityName);
+    }
+}
+
 void App::update(float dt)
 {
     if (m_mode == Mode::Fields)
         m_world.update(dt);
     else
         m_circuit.update(dt);
+
+    if (m_grapher.hasSelection())
+    {
+        const float simTime = (m_mode == Mode::Fields) ? m_world.simTime() : m_circuit.simTime();
+        m_logger.record(simTime, m_grapher.sample());
+    }
 }
 
 void App::draw()
@@ -507,14 +549,14 @@ void App::drawStatsPanel()
     ImGui::SetNextWindowPos(ImVec2(static_cast<float>(m_window.getSize().x) * 0.5f, 10.0f), ImGuiCond_Always, ImVec2(0.5f, 0.0f));
     ImGui::Begin("Stats", nullptr, kFixedFlags);
 
-    if (!m_settingsOpen && !m_paused)
+    if (!m_settingsOpen && !m_paused && !m_grapher.isGraphOpen())
     {
         const float fps = m_lastFrameTime > 0.0f ? (1.0f / m_lastFrameTime) : 0.0f;
         ImGui::Text("FPS: %.1f  |  Calc Freq: %.0f Hz", fps, CALC_FREQ);
     }
     else
     {
-        const std::string pauseReason = m_settingsOpen ? "Settings Open" : "User Paused";
+        const std::string pauseReason = m_settingsOpen ? "Settings Open" : (m_grapher.isGraphOpen() ? "Graph Open" : "User Paused");
         const std::string pauseText = "Paused: " + pauseReason;
         const float statsWidth = ImGui::GetWindowSize().x;
         const float pauseTextWidth = ImGui::CalcTextSize(pauseText.c_str()).x;
@@ -818,6 +860,12 @@ void App::drawPropertiesPanel()
         ImGui::DragFloat("Radius (m)", &surface->radius, GAUSSIAN_SURFACE_RADIUS_STEP, MIN_GAUSSIAN_SURFACE_RADIUS, MAX_GAUSSIAN_SURFACE_RADIUS, "%.2f");
         ImGui::Text("Center: %s m", surface->center.toString().c_str());
         ImGui::Text("Enclosed charge: %.3g C", surface->enclosedCharge(m_world.charges()));
+        drawGraphToggle(quantityLabel("Gaussian Surface", surface->id, "Enclosed Charge", "C"), "gaussQ" + std::to_string(surface->id),
+                        [this, id = surface->id]() -> double
+                        {
+                            GaussianSurface *s = m_world.findGaussianSurface(id);
+                            return s ? static_cast<double>(s->enclosedCharge(m_world.charges())) : std::nan("");
+                        });
 
         ImGui::End();
     }
@@ -861,6 +909,13 @@ void App::drawPropertiesPanel()
             particle->velocity = Vec2(velocity[0], velocity[1]);
 
         ImGui::Text("Position: %s m", particle->position.toString().c_str());
+        ImGui::Text("Speed: %.4g m/s", particle->velocity.length());
+        drawGraphToggle(quantityLabel("Particle", particle->id, "Speed", "m/s"), "particleSpeed" + std::to_string(particle->id),
+                        [this, id = particle->id]() -> double
+                        {
+                            ChargedParticle *p = m_world.findParticle(id);
+                            return p ? static_cast<double>(p->velocity.length()) : std::nan("");
+                        });
         ImGui::Checkbox("Trajectory Trace", &particle->trajectoryTraceEnabled);
         ImGui::SameLine();
         if (ImGui::Button("Clear"))
@@ -912,6 +967,12 @@ void App::drawPropertiesPanel()
 
         ImGui::Text("Position: %s m", loop->center.toString().c_str());
         ImGui::Text("Induced EMF: %.4g V", loop->inducedEMF);
+        drawGraphToggle(quantityLabel("Moving Loop", loop->id, "Induced EMF", "V"), "loopEMF" + std::to_string(loop->id),
+                        [this, id = loop->id]() -> double
+                        {
+                            MovingLoop *l = m_world.findLoop(id);
+                            return l ? static_cast<double>(l->inducedEMF) : std::nan("");
+                        });
 
         if (!loop->emfTrace.empty())
         {
@@ -965,44 +1026,129 @@ void App::drawCircuitPropertiesPanel()
         ImGui::Text("%s", comp->typeName().c_str());
         ImGui::Separator();
 
+        const std::string typeName = comp->typeName();
+        const std::string idSuffix = std::to_string(comp->id);
+
         if (Resistor *resistor = dynamic_cast<Resistor *>(comp))
         {
             ImGui::DragFloat("Resistance (Ohm)", &resistor->resistance, RESISTANCE_STEP, MIN_RESISTANCE, MAX_RESISTANCE, "%.3g");
             ImGui::Text("Voltage: %.4g V", resistor->voltage);
+            drawGraphToggle(quantityLabel(typeName, comp->id, "Voltage", "V"), "resV" + idSuffix,
+                            [this, id = comp->id]() -> double
+                            {
+                                Resistor *r = dynamic_cast<Resistor *>(m_circuit.findComponent(id));
+                                return r ? static_cast<double>(r->voltage) : std::nan("");
+                            });
             ImGui::Text("Current: %.4g A", resistor->current);
+            drawGraphToggle(quantityLabel(typeName, comp->id, "Current", "A"), "resI" + idSuffix,
+                            [this, id = comp->id]() -> double
+                            {
+                                Resistor *r = dynamic_cast<Resistor *>(m_circuit.findComponent(id));
+                                return r ? static_cast<double>(r->current) : std::nan("");
+                            });
         }
         else if (Capacitor *capacitor = dynamic_cast<Capacitor *>(comp))
         {
             ImGui::DragFloat("Capacitance (F)", &capacitor->capacitance, CAPACITANCE_STEP, MIN_CAPACITANCE, MAX_CAPACITANCE, "%.3g");
             ImGui::Text("Voltage: %.4g V", capacitor->voltage);
+            drawGraphToggle(quantityLabel(typeName, comp->id, "Voltage", "V"), "capV" + idSuffix,
+                            [this, id = comp->id]() -> double
+                            {
+                                Capacitor *c = dynamic_cast<Capacitor *>(m_circuit.findComponent(id));
+                                return c ? static_cast<double>(c->voltage) : std::nan("");
+                            });
             ImGui::Text("Charge: %.4g C", capacitor->charge);
+            drawGraphToggle(quantityLabel(typeName, comp->id, "Charge", "C"), "capQ" + idSuffix,
+                            [this, id = comp->id]() -> double
+                            {
+                                Capacitor *c = dynamic_cast<Capacitor *>(m_circuit.findComponent(id));
+                                return c ? static_cast<double>(c->charge) : std::nan("");
+                            });
             ImGui::Text("Current: %.4g A", capacitor->current);
+            drawGraphToggle(quantityLabel(typeName, comp->id, "Current", "A"), "capI" + idSuffix,
+                            [this, id = comp->id]() -> double
+                            {
+                                Capacitor *c = dynamic_cast<Capacitor *>(m_circuit.findComponent(id));
+                                return c ? static_cast<double>(c->current) : std::nan("");
+                            });
         }
         else if (Inductor *inductor = dynamic_cast<Inductor *>(comp))
         {
             ImGui::DragFloat("Inductance (H)", &inductor->inductance, INDUCTANCE_STEP, MIN_INDUCTANCE, MAX_INDUCTANCE, "%.3g");
             ImGui::Text("Voltage: %.4g V", inductor->voltage);
+            drawGraphToggle(quantityLabel(typeName, comp->id, "Voltage", "V"), "indV" + idSuffix,
+                            [this, id = comp->id]() -> double
+                            {
+                                Inductor *i = dynamic_cast<Inductor *>(m_circuit.findComponent(id));
+                                return i ? static_cast<double>(i->voltage) : std::nan("");
+                            });
             ImGui::Text("Current: %.4g A", inductor->current);
+            drawGraphToggle(quantityLabel(typeName, comp->id, "Current", "A"), "indI" + idSuffix,
+                            [this, id = comp->id]() -> double
+                            {
+                                Inductor *i = dynamic_cast<Inductor *>(m_circuit.findComponent(id));
+                                return i ? static_cast<double>(i->current) : std::nan("");
+                            });
         }
         else if (Battery *battery = dynamic_cast<Battery *>(comp))
         {
             ImGui::DragFloat("EMF (V)", &battery->emf, EMF_STEP, MIN_EMF, MAX_EMF, "%.2f");
             ImGui::DragFloat("Internal Resistance (Ohm)", &battery->internalResistance, INTERNAL_RESISTANCE_STEP, MIN_INTERNAL_RESISTANCE, MAX_INTERNAL_RESISTANCE, "%.2f");
             ImGui::Text("Terminal Voltage: %.4g V", battery->voltage);
+            drawGraphToggle(quantityLabel(typeName, comp->id, "Terminal Voltage", "V"), "battV" + idSuffix,
+                            [this, id = comp->id]() -> double
+                            {
+                                Battery *b = dynamic_cast<Battery *>(m_circuit.findComponent(id));
+                                return b ? static_cast<double>(b->voltage) : std::nan("");
+                            });
             ImGui::Text("Current: %.4g A", battery->current);
+            drawGraphToggle(quantityLabel(typeName, comp->id, "Current", "A"), "battI" + idSuffix,
+                            [this, id = comp->id]() -> double
+                            {
+                                Battery *b = dynamic_cast<Battery *>(m_circuit.findComponent(id));
+                                return b ? static_cast<double>(b->current) : std::nan("");
+                            });
         }
         else if (Switch *sw = dynamic_cast<Switch *>(comp))
         {
             ImGui::Checkbox("Closed", &sw->closed);
             ImGui::Text("Voltage: %.4g V", sw->voltage);
+            drawGraphToggle(quantityLabel(typeName, comp->id, "Voltage", "V"), "swV" + idSuffix,
+                            [this, id = comp->id]() -> double
+                            {
+                                Switch *s = dynamic_cast<Switch *>(m_circuit.findComponent(id));
+                                return s ? static_cast<double>(s->voltage) : std::nan("");
+                            });
             ImGui::Text("Current: %.4g A", sw->current);
+            drawGraphToggle(quantityLabel(typeName, comp->id, "Current", "A"), "swI" + idSuffix,
+                            [this, id = comp->id]() -> double
+                            {
+                                Switch *s = dynamic_cast<Switch *>(m_circuit.findComponent(id));
+                                return s ? static_cast<double>(s->current) : std::nan("");
+                            });
         }
         else if (Probe *probe = dynamic_cast<Probe *>(comp))
         {
             if (probe->kind == Probe::Kind::Ammeter)
+            {
                 ImGui::Text("Current: %.4g A", probe->current);
+                drawGraphToggle(quantityLabel(typeName, comp->id, "Current", "A"), "probeI" + idSuffix,
+                                [this, id = comp->id]() -> double
+                                {
+                                    Probe *p = dynamic_cast<Probe *>(m_circuit.findComponent(id));
+                                    return p ? static_cast<double>(p->current) : std::nan("");
+                                });
+            }
             else
+            {
                 ImGui::Text("Voltage: %.4g V", probe->voltage);
+                drawGraphToggle(quantityLabel(typeName, comp->id, "Voltage", "V"), "probeV" + idSuffix,
+                                [this, id = comp->id]() -> double
+                                {
+                                    Probe *p = dynamic_cast<Probe *>(m_circuit.findComponent(id));
+                                    return p ? static_cast<double>(p->voltage) : std::nan("");
+                                });
+            }
         }
 
         ImGui::Text("A: %s m", comp->posA.toString().c_str());
@@ -1025,6 +1171,12 @@ void App::drawCircuitPropertiesPanel()
         ImGui::Text("Wire");
         ImGui::Separator();
         ImGui::Text("Current: %.4g A", wire->current);
+        drawGraphToggle(quantityLabel("Wire", wire->id, "Current", "A"), "circWireI" + std::to_string(wire->id),
+                        [this, id = wire->id]() -> double
+                        {
+                            CircuitWire *w = m_circuit.findWire(id);
+                            return w ? static_cast<double>(w->current) : std::nan("");
+                        });
         ImGui::Text("Start: %s m", wire->start.toString().c_str());
         ImGui::Text("End: %s m", wire->end.toString().c_str());
         ImGui::End();
@@ -1054,6 +1206,27 @@ void App::drawSettingsPanel()
     if (ImGui::RadioButton("Electron", m_renderer.currentFlowDisplay == CurrentFlowDisplay::Electron))
         m_renderer.currentFlowDisplay = CurrentFlowDisplay::Electron;
 
+    ImGui::Separator();
+    ImGui::Text("Data Logging & Graphing:");
+    ImGui::Text("Quantities selected: %d", static_cast<int>(m_grapher.selectedQuantities().size()));
+    if (ImGui::Button(m_grapher.isGraphOpen() ? "Close Graph" : "Open Graph"))
+        m_grapher.toggleGraph(m_logger);
+    ImGui::SameLine();
+    ImGui::TextDisabled("(G)");
+    ImGui::SameLine();
+    if (ImGui::Button("Clear Selection"))
+        m_grapher.clearSelection();
+    if (m_grapher.isGraphOpen() && ImGui::Button("Save Graph as Image"))
+        m_grapher.saveAsImage(timestampedFilename(GRAPH_EXPORT_DIRECTORY, "graph", "png"));
+    if (ImGui::Button("Save Log"))
+        m_logger.save(timestampedFilename(LOG_DIRECTORY, "log", "json"));
+    ImGui::SameLine();
+    if (ImGui::Button("Open Log Folder"))
+        m_logger.openLogFolder();
+    ImGui::SameLine();
+    if (ImGui::Button("Clear Log"))
+        m_logger.reset();
+
     if (fieldsMode)
     {
         ImGui::Separator();
@@ -1072,37 +1245,76 @@ void App::drawSettingsPanel()
         if (ImGui::Button("1x"))
             m_world.setPermeabilityFactor(1.0f);
         ImGui::Separator();
+        // Loading a preset (or resetting) replaces the scene wholesale, so any graphed
+        // quantity/logged history would otherwise dangle onto entities that no longer
+        // exist - clear both alongside the scene itself, same as Reset Simulation below.
         if (ImGui::Button("Load Dipole Field Preset"))
+        {
             Presets::loadDipoleField(m_world);
+            m_logger.reset();
+            m_grapher.clearSelection();
+        }
         if (ImGui::Button("Load Particle in Uniform B Preset"))
+        {
             Presets::loadParticleInUniformB(m_world);
+            m_logger.reset();
+            m_grapher.clearSelection();
+        }
         if (ImGui::Button("Load Generator Demo Preset"))
+        {
             Presets::loadGeneratorDemo(m_world);
+            m_logger.reset();
+            m_grapher.clearSelection();
+        }
         if (ImGui::Button("Reset Simulation"))
         {
             m_world.reset();
             m_grabbedKind = EntityKind::None;
             m_selectedKind = EntityKind::None;
+            m_logger.reset();
+            m_grapher.clearSelection();
         }
     }
     else
     {
         ImGui::Separator();
         if (ImGui::Button("Load Basic Resistor Circuit Preset"))
+        {
             Presets::loadBasicResistorCircuit(m_circuit);
+            m_logger.reset();
+            m_grapher.clearSelection();
+        }
         if (ImGui::Button("Load Lightbulb Circuit Preset"))
+        {
             Presets::loadLightbulbCircuit(m_circuit);
+            m_logger.reset();
+            m_grapher.clearSelection();
+        }
         if (ImGui::Button("Load Simple RC Circuit Preset"))
+        {
             Presets::loadSimpleRCCircuit(m_circuit);
+            m_logger.reset();
+            m_grapher.clearSelection();
+        }
         if (ImGui::Button("Load Simple LR Circuit Preset"))
+        {
             Presets::loadSimpleLRCircuit(m_circuit);
+            m_logger.reset();
+            m_grapher.clearSelection();
+        }
         if (ImGui::Button("Load Simple LC Circuit Preset"))
+        {
             Presets::loadSimpleLCCircuit(m_circuit);
+            m_logger.reset();
+            m_grapher.clearSelection();
+        }
         if (ImGui::Button("Reset Simulation"))
         {
             m_circuit.reset();
             m_circuitGrabbedKind = CircuitEntityKind::None;
             m_circuitSelectedKind = CircuitEntityKind::None;
+            m_logger.reset();
+            m_grapher.clearSelection();
         }
     }
 

@@ -230,3 +230,7 @@
 #define LOG_DIRECTORY "logs"
 #define SCREENSHOT_DIRECTORY "screenshots"
 #define GRAPH_EXPORT_DIRECTORY "graphs"
+
+// A session left running indefinitely would otherwise grow Logger's history unbounded -
+// oldest samples are dropped past this cap, same spirit as TRAJECTORY_TRACE_MAX_POINTS.
+#define LOG_MAX_SAMPLES 5000u
