@@ -17,6 +17,7 @@ class ChargedParticle;
 class CurrentWire;
 class MovingLoop;
 class CurrentLoop;
+class DipoleMagnet;
 
 // Which way charge carriers are animated flowing through wires/loops (a rendering choice
 // only). Shared across magnetism, induction, and (once built) circuits.
@@ -66,4 +67,5 @@ private:
     void drawParticles(sf::RenderWindow &window, const std::vector<ChargedParticle> &particles) const;
     void drawLoops(sf::RenderWindow &window, const World &world) const;
     void drawCurrentLoops(sf::RenderWindow &window, const World &world) const;
+    void drawDipoleMagnets(sf::RenderWindow &window, const World &world) const;
 };

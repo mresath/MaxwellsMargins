@@ -47,7 +47,7 @@ src/
 ├── engine/                     Solver (shared DOPRI5-style integrator),
 │                               FieldMath (Coulomb/Biot-Savart/Lorentz)
 ├── electrostatics/             PointCharge, FieldSampler, EquipotentialTracer, GaussianSurface
-├── magnetism/                  UniformBField, CurrentWire, CurrentLoop, ChargedParticle
+├── magnetism/                  UniformBField, CurrentWire, CurrentLoop, DipoleMagnet, ChargedParticle
 ├── induction/                  MovingLoop (also drives the generator demo via angularVelocity)
 ├── circuits/                   Component (+Resistor/Lightbulb/Capacitor/Inductor/Battery/
 │                               Switch/Probe), CircuitWire, CircuitGraph
@@ -103,6 +103,7 @@ QA audits).
 - `CurrentWire` placement; field via `biotSavartField` (right-hand rule visualization).
 - `forceBetweenWires` + on-canvas force readout for two parallel wires.
 - `CurrentLoop` placement: a stationary multi-turn coil, field via `currentLoopField` (added post-Phase-4, alongside `MovingLoop`'s own `turns`).
+- `DipoleMagnet` placement: a stationary permanent magnet whose axis points through the page (added post-Phase-6), field via `dipoleMagnetField` - reuses `currentLoopField`'s on-axis-reused-radially formula shape, but reparameterized directly by the magnet's own surface field (Tesla) instead of `mu0*current`, so it needs no `permeabilityFactor` (the user is dialing in a real physical value directly, not an artificially-amplified one).
 - Preset: `scenes::loadParticleInUniformB`.
 - Acceptance: a charged particle in a uniform B field traces a circle/helix of the physically-correct radius (`r = mv/qB`); two anti/parallel current wires attract/repel per the right sign and magnitude.
 
@@ -154,6 +155,7 @@ QA audits).
 - **A selected quantity is stored as a name plus a `std::function<double()>` getter, not a raw pointer into the entity**: the getter re-looks-up the entity by id each call (mirroring every other id-keyed lookup in the app), so a quantity selected on an entity that's later moved is unaffected and one that's later erased just reads back `NaN` (a gap in the plotted line) instead of dereferencing a dangling pointer.
 - **A quantity's canonical name (e.g. `"Resistor #7 - Voltage (V)"`) doubles as both the Grapher's selection key and the exported plot's legend label**: avoids needing a separate units-lookup table (unlike NN's `BodyKeyUnit`), since MM has no single struct spanning every graphable entity type to hang such a switch off of.
 - **Unit display and overlay-toggle QA passes required no code changes**: both were audited (grepping every ImGui label/overlay flag against its corresponding Settings/Properties control) and found already fully consistent, a result of the per-phase discipline already followed rather than a gap needing a dedicated fix.
+- **`DipoleMagnet`'s axis points through the page, not in-plane**: a bar magnet lying flat in the page would produce a field with genuine in-plane (x,y) components at other in-plane points - a fundamentally different, vector-valued field unlike every existing B source (`UniformBField`/`CurrentWire`/`CurrentLoop`/moving charges), which are all purely out-of-page scalars. Modeling that properly would mean generalizing `World::magneticFieldAt()` from a signed float to a real vector everywhere it's consumed - and even then, a charged particle's in-plane velocity crossed with an in-plane B only ever produces a force *perpendicular to the page* (unrepresentable by a 2D-position particle), so it couldn't deflect particle motion regardless. Given that, a through-page orientation (matching `CurrentLoop`'s existing model exactly) was chosen instead: no new architecture, and the field remains a physically meaningful, fully-integrated B source (particles, loop flux, the Field Probe) for zero extra code beyond the one new field formula.
 
 ## Checklist
 

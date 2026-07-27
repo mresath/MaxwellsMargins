@@ -7,6 +7,7 @@
 class PointCharge;
 class CurrentWire;
 class CurrentLoop;
+class DipoleMagnet;
 
 // Shared field/force math: Coulomb's law superposition, Biot-Savart/Ampere for wires, and
 // the Lorentz force. Used by electrostatics, magnetism, and induction modules alike.
@@ -29,6 +30,12 @@ float forceBetweenWires(float current1, float current2, float separation, float 
 // On-axis circular-loop formula, reused radially instead of the true off-axis field (which
 // needs elliptic integrals) - exact at the loop's own center, an approximation elsewhere.
 float currentLoopField(const Vec2 &point, const std::vector<CurrentLoop> &loops, float permeabilityFactor);
+
+// Reuses currentLoopField's on-axis-reused-radially shape, but reparameterized directly by
+// the magnet's own surface field (Tesla) instead of mu0*current - substituting
+// mu0*N*I = 2*R*surfaceField makes this exact at the magnet's own center by construction,
+// and needs no permeabilityFactor since surfaceField is already a real, user-set value.
+float dipoleMagnetField(const Vec2 &point, const std::vector<DipoleMagnet> &magnets);
 
 // B field of a single moving point charge (point-charge Biot-Savart: mu0/4*pi * q * (v x
 // r_hat) / r^2) - signed scalar for the same reason as biotSavartField.

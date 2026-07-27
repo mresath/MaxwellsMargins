@@ -8,6 +8,7 @@
 #include "magnetism/ChargedParticle.hpp"
 #include "magnetism/CurrentLoop.hpp"
 #include "magnetism/CurrentWire.hpp"
+#include "magnetism/DipoleMagnet.hpp"
 #include "magnetism/UniformBField.hpp"
 #include "math/Vec2.hpp"
 
@@ -19,7 +20,8 @@ enum class EntityKind
     Particle,
     Wire,
     Loop,
-    CurrentLoop
+    CurrentLoop,
+    DipoleMagnet
 };
 
 struct EntityRef
@@ -43,6 +45,7 @@ public:
     std::vector<PointCharge> &charges();
     std::vector<CurrentWire> &wires();
     std::vector<CurrentLoop> &currentLoops();
+    std::vector<DipoleMagnet> &dipoleMagnets();
     std::vector<ChargedParticle> &particles();
     std::vector<MovingLoop> &loops();
     std::vector<GaussianSurface> &gaussianSurfaces();
@@ -51,6 +54,7 @@ public:
     const std::vector<PointCharge> &charges() const;
     const std::vector<CurrentWire> &wires() const;
     const std::vector<CurrentLoop> &currentLoops() const;
+    const std::vector<DipoleMagnet> &dipoleMagnets() const;
     const std::vector<ChargedParticle> &particles() const;
     const std::vector<MovingLoop> &loops() const;
     const std::vector<GaussianSurface> &gaussianSurfaces() const;
@@ -68,6 +72,7 @@ public:
     CurrentWire *findWire(int id);
     MovingLoop *findLoop(int id);
     CurrentLoop *findCurrentLoop(int id);
+    DipoleMagnet *findDipoleMagnet(int id);
 
     // The single global field: every source at once (charges+particles for E; uniform
     // field+wires+particles for B). excludeParticleId skips that particle's own self-field.
@@ -88,6 +93,7 @@ private:
     std::vector<PointCharge> m_charges;
     std::vector<CurrentWire> m_wires;
     std::vector<CurrentLoop> m_currentLoops;
+    std::vector<DipoleMagnet> m_dipoleMagnets;
     std::vector<ChargedParticle> m_particles;
     std::vector<MovingLoop> m_loops;
     std::vector<GaussianSurface> m_gaussianSurfaces;

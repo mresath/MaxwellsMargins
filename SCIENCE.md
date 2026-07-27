@@ -107,6 +107,25 @@ elliptic integrals - exact at the center, an approximation elsewhere. `turns` on
 `CurrentLoop` and `MovingLoop` models a multi-turn coil as ampere-turns/flux-linkage
 ($N \times$ current or $N \times$ flux) rather than simulating each individual winding.
 
+**Dipole magnet** (`DipoleMagnet`): a stationary permanent magnet whose axis points through
+the page, like `CurrentLoop`'s coil - not lying flat in the page, which would instead
+produce a field with genuine in-plane components (see PLAN.md's open decisions log for why
+that's out of scope). Rather than introduce $\mu_0$ and an artificial dipole moment, its
+field reuses `currentLoopField`'s formula shape reparameterized directly by the magnet's own
+adjustable **surface field** $B_s$ (Tesla) - substituting $\mu_0 N I = 2 R B_s$ (the value
+that makes the loop formula equal $B_s$ at $d=0$) gives:
+
+$$
+B(d) = \frac{B_s R^3}{(R^2+d^2)^{3/2}}
+$$
+
+exact at the magnet's own center ($B(0) = B_s$, by construction) and the same approximation
+elsewhere as `CurrentLoop`. No `permeabilityFactor` is involved - unlike current-driven
+sources, $B_s$ is already a real, directly user-set Tesla value (comparable to
+`UniformBField`'s `strength`), not a $\mu_0 \times \text{current}$ product that needs
+artificial amplification to be visible. Positive $B_s$ is a North pole facing the viewer
+(field out of page at center); negative is South.
+
 **Playground scale**: at the real $\mu_0 \approx 1.26\times10^{-6}$, a wire's or particle's
 own generated field is negligible next to electrostatics' charge scale. `permeabilityFactor`
 (Settings panel, default $10^6$, "1x" button for real physics) multiplies $\mu_0$ in both

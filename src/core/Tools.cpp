@@ -20,6 +20,7 @@ Tools::Tools()
       m_wireCurrent(DEFAULT_WIRE_CURRENT), m_wireDragActive(false), m_wireDragStart(0.0f, 0.0f),
       m_loopRadius(DEFAULT_LOOP_RADIUS), m_loopTurns(DEFAULT_LOOP_TURNS), m_loopAngularVelocity(DEFAULT_LOOP_ANGULAR_VELOCITY),
       m_currentLoopRadius(DEFAULT_CURRENT_LOOP_RADIUS), m_currentLoopCurrent(DEFAULT_CURRENT_LOOP_CURRENT), m_currentLoopTurns(DEFAULT_CURRENT_LOOP_TURNS),
+      m_dipoleMagnetRadius(DEFAULT_DIPOLE_MAGNET_RADIUS), m_dipoleMagnetSurfaceField(DEFAULT_DIPOLE_MAGNET_SURFACE_FIELD),
       m_resistance(DEFAULT_RESISTANCE), m_capacitance(DEFAULT_CAPACITANCE), m_inductance(DEFAULT_INDUCTANCE), m_batteryEmf(DEFAULT_EMF), m_batteryInternalResistance(DEFAULT_INTERNAL_RESISTANCE), m_switchClosed(true),
       m_componentDragActive(false), m_componentDragStart(0.0f, 0.0f)
 {
@@ -67,6 +68,11 @@ float Tools::currentLoopCurrent() const { return m_currentLoopCurrent; }
 void Tools::setCurrentLoopCurrent(float current) { m_currentLoopCurrent = current; }
 int Tools::currentLoopTurns() const { return m_currentLoopTurns; }
 void Tools::setCurrentLoopTurns(int turns) { m_currentLoopTurns = turns; }
+
+float Tools::dipoleMagnetRadius() const { return m_dipoleMagnetRadius; }
+void Tools::setDipoleMagnetRadius(float radius) { m_dipoleMagnetRadius = radius; }
+float Tools::dipoleMagnetSurfaceField() const { return m_dipoleMagnetSurfaceField; }
+void Tools::setDipoleMagnetSurfaceField(float surfaceField) { m_dipoleMagnetSurfaceField = surfaceField; }
 
 bool Tools::isDraggingWire() const { return m_wireDragActive; }
 Vec2 Tools::wireDragStart() const { return m_wireDragStart; }
@@ -182,6 +188,9 @@ void Tools::onClick(const Vec2 &worldPos, World &world)
     }
     case ToolType::PlaceCurrentLoop:
         world.currentLoops().emplace_back(worldPos, m_currentLoopRadius, m_currentLoopCurrent, m_currentLoopTurns, world.allocateEntityId());
+        break;
+    case ToolType::PlaceDipoleMagnet:
+        world.dipoleMagnets().emplace_back(worldPos, m_dipoleMagnetRadius, m_dipoleMagnetSurfaceField, world.allocateEntityId());
         break;
     case ToolType::DrawGaussianSurface:
         world.gaussianSurfaces().emplace_back(worldPos, m_gaussianRadius, world.allocateEntityId());

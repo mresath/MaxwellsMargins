@@ -20,6 +20,7 @@ A physics simulator/playground with the following features:
   - Uniform Magnetic Fields
   - Charged Particles (Lorentz Force, Mutual E/B Interaction)
   - Current-Carrying Wires (Force Between Wires)
+  - Current Loops and Dipole Magnets (Adjustable Surface Field)
   - Conventional Current / Electron Flow Visualization
 - Induction
   - Moving & Rotating Loops (Faraday's/Lenz's Laws)
@@ -80,6 +81,7 @@ UI panels: `Stats`, `Tools`, `Tool Settings`, `Properties` (appears once somethi
 - Current-carrying wires animate a `Current Flow` setting (Off/Conventional/Electron): Conventional shows arrow markers moving the signed-current direction, Electron shows charge-colored dots drifting the physically-opposite way
 - A `Current Loop` tool places a stationary circular coil with its own adjustable current and turn/loop count; its field peaks at the coil's center and animates the same `Current Flow` markers as wires
 - Both loop types' turn count is drawn as concentric rings (capped to stay legible at high counts), not just a number in a panel
+- A `Dipole Magnet` tool places a stationary permanent magnet (axis through the page, like `Current Loop`'s coil) with an adjustable radius and surface field in Tesla; drawn as a solid disc tinted by pole (red = North/out of page, blue = South/into page) rather than current-flow markers, since nothing is actually circulating
 
 ## Induction
 

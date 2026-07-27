@@ -147,6 +147,24 @@
 #define MAX_CURRENT_LOOP_TURNS 100
 #define DEFAULT_CURRENT_LOOP_TURNS 1
 
+// A dipole magnet's axis points through the page (matching CurrentLoop's model), so its
+// "surface field" - the real Tesla value at its own center, by construction of the formula
+// in FieldMath::dipoleMagnetField - is a directly user-set physical quantity, unlike
+// current-driven sources: it needs no permeabilityFactor amplification to be visible.
+#define MIN_DIPOLE_MAGNET_RADIUS 0.1f     // meters
+#define MAX_DIPOLE_MAGNET_RADIUS 1.5f     // meters
+#define DEFAULT_DIPOLE_MAGNET_RADIUS 0.3f // meters - a compact object, unlike CurrentLoop's coil
+#define DIPOLE_MAGNET_RADIUS_STEP 0.02f   // meters, Tool Settings drag-slider step
+
+#define MIN_DIPOLE_MAGNET_SURFACE_FIELD -2.0f    // T
+#define MAX_DIPOLE_MAGNET_SURFACE_FIELD 2.0f      // T
+#define DEFAULT_DIPOLE_MAGNET_SURFACE_FIELD 1.0f  // T, a strong neodymium-magnet-scale value
+#define DIPOLE_MAGNET_SURFACE_FIELD_STEP 0.05f    // T, Tool Settings drag-slider step
+
+// Positive surfaceField = North pole toward the viewer (field out of page at center).
+#define DIPOLE_MAGNET_NORTH_COLOR sf::Color(220, 70, 70, 255)
+#define DIPOLE_MAGNET_SOUTH_COLOR sf::Color(70, 110, 220, 255)
+
 // INDUCTION CONFIGURATION
 #define MIN_LOOP_RADIUS 0.3f     // meters
 #define MAX_LOOP_RADIUS 3.0f     // meters

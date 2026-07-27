@@ -15,6 +15,7 @@ enum class ToolType
     PlaceChargedParticle,
     PlaceMovingLoop,
     PlaceCurrentLoop,
+    PlaceDipoleMagnet,
     DrawGaussianSurface,
     FieldProbe,
 
@@ -78,6 +79,11 @@ public:
     int currentLoopTurns() const;
     void setCurrentLoopTurns(int turns);
 
+    float dipoleMagnetRadius() const;
+    void setDipoleMagnetRadius(float radius);
+    float dipoleMagnetSurfaceField() const;
+    void setDipoleMagnetSurfaceField(float surfaceField);
+
     // A wire needs two points, so it's placed by click-drag (start on press, end on
     // release) rather than the single-click Tools::onClick path.
     bool isDraggingWire() const;
@@ -126,6 +132,9 @@ private:
     float m_currentLoopRadius;
     float m_currentLoopCurrent;
     int m_currentLoopTurns;
+
+    float m_dipoleMagnetRadius;
+    float m_dipoleMagnetSurfaceField;
 
     float m_resistance;
     float m_capacitance;

@@ -4,6 +4,7 @@
 #include "electrostatics/PointCharge.hpp"
 #include "magnetism/CurrentLoop.hpp"
 #include "magnetism/CurrentWire.hpp"
+#include "magnetism/DipoleMagnet.hpp"
 
 #include <cmath>
 
@@ -42,6 +43,16 @@ float singleCurrentLoopField(const Vec2 &point, const CurrentLoop &loop, float p
     const float d = (point - loop.center).length();
     const float denom = std::pow(loop.radius * loop.radius + d * d, 1.5f);
     return VACUUM_PERMEABILITY * permeabilityFactor * static_cast<float>(loop.turns) * loop.current * loop.radius * loop.radius / (2.0f * denom);
+}
+
+// currentLoopField's on-axis shape, reparameterized directly by surfaceField (see
+// FieldMath.hpp) - exact at d=0 (where it equals surfaceField exactly, by construction),
+// an approximation elsewhere, same as the loop formula it's derived from.
+float singleDipoleMagnetField(const Vec2 &point, const DipoleMagnet &magnet)
+{
+    const float d = (point - magnet.center).length();
+    const float denom = std::pow(magnet.radius * magnet.radius + d * d, 1.5f);
+    return magnet.surfaceField * magnet.radius * magnet.radius * magnet.radius / denom;
 }
 } // namespace
 
@@ -102,6 +113,14 @@ float currentLoopField(const Vec2 &point, const std::vector<CurrentLoop> &loops,
     float total = 0.0f;
     for (const auto &loop : loops)
         total += singleCurrentLoopField(point, loop, permeabilityFactor);
+    return total;
+}
+
+float dipoleMagnetField(const Vec2 &point, const std::vector<DipoleMagnet> &magnets)
+{
+    float total = 0.0f;
+    for (const auto &magnet : magnets)
+        total += singleDipoleMagnetField(point, magnet);
     return total;
 }
 

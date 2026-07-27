@@ -50,6 +50,8 @@ const char *toolName(ToolType tool)
         return "Place Moving Loop";
     case ToolType::PlaceCurrentLoop:
         return "Place Current Loop";
+    case ToolType::PlaceDipoleMagnet:
+        return "Place Dipole Magnet";
     case ToolType::DrawGaussianSurface:
         return "Draw Gaussian Surface";
     case ToolType::FieldProbe:
@@ -108,6 +110,8 @@ const char *iconTextureFor(ToolType tool)
         return "moving_loop";
     case ToolType::PlaceCurrentLoop:
         return "current_loop";
+    case ToolType::PlaceDipoleMagnet:
+        return "dipole_magnet";
     case ToolType::PlaceResistor:
         return "resistor";
     case ToolType::PlaceLightbulb:
@@ -149,7 +153,7 @@ std::vector<ToolType> toolsForMode(Mode mode)
     {
         return {ToolType::Select, ToolType::FieldProbe, ToolType::Move, ToolType::PlacePositiveCharge, ToolType::PlaceNegativeCharge,
                 ToolType::PlaceCurrentWire, ToolType::PlaceChargedParticle, ToolType::PlaceMovingLoop, ToolType::PlaceCurrentLoop,
-                ToolType::DrawGaussianSurface, ToolType::Erase};
+                ToolType::PlaceDipoleMagnet, ToolType::DrawGaussianSurface, ToolType::Erase};
     }
     // Ordered by expected frequency of use: wiring, switches, and the power source first
     // (needed in nearly every circuit), then the two probes, then passive components from
@@ -191,7 +195,7 @@ App::App()
     m_window.setFramerateLimit(MAX_FPS);
 
     for (const char *name : {"cursor", "hand", "trash", "positive_charge", "negative_charge", "gaussian_surface", "field_probe", "charged_particle", "current_wire", "moving_loop", "current_loop",
-                             "resistor", "lightbulb", "capacitor", "inductor", "battery", "switch", "wire", "ammeter", "voltmeter"})
+                             "dipole_magnet", "resistor", "lightbulb", "capacitor", "inductor", "battery", "switch", "wire", "ammeter", "voltmeter"})
     {
         sf::Texture texture;
         texture.setSmooth(true);
@@ -696,6 +700,20 @@ void App::drawToolSettingsPanel(float toolsPanelWidth)
         if (ImGui::DragInt("Turns", &turns, 1.0f, MIN_CURRENT_LOOP_TURNS, MAX_CURRENT_LOOP_TURNS))
             m_tools.setCurrentLoopTurns(turns);
     }
+    else if (m_mode == Mode::Fields && tool == ToolType::PlaceDipoleMagnet)
+    {
+        ImGui::Text("Left Click to place a dipole magnet (axis through the page)");
+        ImGui::Separator();
+
+        float radius = m_tools.dipoleMagnetRadius();
+        if (ImGui::DragFloat("Radius (m)", &radius, DIPOLE_MAGNET_RADIUS_STEP, MIN_DIPOLE_MAGNET_RADIUS, MAX_DIPOLE_MAGNET_RADIUS, "%.2f"))
+            m_tools.setDipoleMagnetRadius(radius);
+
+        float surfaceField = m_tools.dipoleMagnetSurfaceField();
+        if (ImGui::DragFloat("Surface Field (T)", &surfaceField, DIPOLE_MAGNET_SURFACE_FIELD_STEP, MIN_DIPOLE_MAGNET_SURFACE_FIELD, MAX_DIPOLE_MAGNET_SURFACE_FIELD, "%.2f"))
+            m_tools.setDipoleMagnetSurfaceField(surfaceField);
+        ImGui::TextDisabled("Positive = North pole toward viewer (field out of page)");
+    }
     else if (m_mode == Mode::Fields && tool == ToolType::FieldProbe)
     {
         const Vec2 field = m_world.electricFieldAt(m_mouseWorldMeters);
@@ -776,21 +794,21 @@ void App::drawToolSettingsPanel(float toolsPanelWidth)
     else if (tool == ToolType::Move)
     {
         if (m_mode == Mode::Fields)
-            ImGui::Text("Left Click and drag to move a charge, particle, wire, loop, current loop, or Gaussian surface");
+            ImGui::Text("Left Click and drag to move a charge, particle, wire, loop, current loop, dipole magnet, or Gaussian surface");
         else
             ImGui::Text("Left Click and drag to move a component or wire");
     }
     else if (tool == ToolType::Erase)
     {
         if (m_mode == Mode::Fields)
-            ImGui::Text("Left Click to erase a charge, particle, wire, loop, current loop, or Gaussian surface");
+            ImGui::Text("Left Click to erase a charge, particle, wire, loop, current loop, dipole magnet, or Gaussian surface");
         else
             ImGui::Text("Left Click to erase a component or wire");
     }
     else if (tool == ToolType::Select)
     {
         if (m_mode == Mode::Fields)
-            ImGui::Text("Left Click to select a charge, particle, wire, loop, current loop, or Gaussian surface");
+            ImGui::Text("Left Click to select a charge, particle, wire, loop, current loop, dipole magnet, or Gaussian surface");
         else
             ImGui::Text("Left Click to select a component or wire");
     }
@@ -1002,6 +1020,26 @@ void App::drawPropertiesPanel()
         ImGui::DragFloat("Current (A)", &loop->current, CURRENT_LOOP_CURRENT_STEP, MIN_CURRENT_LOOP_CURRENT, MAX_CURRENT_LOOP_CURRENT, "%.2f");
         ImGui::DragInt("Turns", &loop->turns, 1.0f, MIN_CURRENT_LOOP_TURNS, MAX_CURRENT_LOOP_TURNS);
         ImGui::Text("Position: %s m", loop->center.toString().c_str());
+
+        ImGui::End();
+    }
+    else if (m_selectedKind == EntityKind::DipoleMagnet)
+    {
+        DipoleMagnet *magnet = m_world.findDipoleMagnet(m_selectedId);
+        if (!magnet)
+        {
+            m_selectedKind = EntityKind::None;
+            return;
+        }
+
+        ImGui::SetNextWindowPos(ImVec2(10.0f, 300.0f), ImGuiCond_Once);
+        ImGui::Begin("Properties", nullptr, kMovableFlags);
+        ImGui::Text("Dipole Magnet");
+        ImGui::Separator();
+
+        ImGui::DragFloat("Radius (m)", &magnet->radius, DIPOLE_MAGNET_RADIUS_STEP, MIN_DIPOLE_MAGNET_RADIUS, MAX_DIPOLE_MAGNET_RADIUS, "%.2f");
+        ImGui::DragFloat("Surface Field (T)", &magnet->surfaceField, DIPOLE_MAGNET_SURFACE_FIELD_STEP, MIN_DIPOLE_MAGNET_SURFACE_FIELD, MAX_DIPOLE_MAGNET_SURFACE_FIELD, "%.2f");
+        ImGui::Text("Position: %s m", magnet->center.toString().c_str());
 
         ImGui::End();
     }
